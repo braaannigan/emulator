@@ -11,6 +11,10 @@ def mean_squared_error(truth: np.ndarray, rollout: np.ndarray) -> float:
     return float(np.mean((truth - rollout) ** 2))
 
 
+def mse_per_timestep(truth: np.ndarray, rollout: np.ndarray) -> np.ndarray:
+    return np.mean((truth - rollout) ** 2, axis=(1, 2))
+
+
 def save_rollout_dataset(
     rollout_path: Path,
     truth: np.ndarray,

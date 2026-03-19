@@ -40,6 +40,7 @@ def train_model(config: CnnThicknessConfig, model: torch.nn.Module, normalized_t
     )
     loss_fn = nn.MSELoss()
     final_loss = 0.0
+    optimization_steps = 0
 
     model.train()
     for _ in range(config.epochs):
@@ -52,5 +53,11 @@ def train_model(config: CnnThicknessConfig, model: torch.nn.Module, normalized_t
             loss.backward()
             optimizer.step()
             final_loss = float(loss.item())
+            optimization_steps += 1
 
-    return {"train_loss": final_loss, "device": str(device)}
+    return {
+        "train_loss": final_loss,
+        "device": str(device),
+        "optimization_steps": optimization_steps,
+        "training_examples": len(dataset),
+    }

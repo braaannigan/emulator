@@ -53,7 +53,16 @@ def _render_frame(
         axis.set_xlabel("x")
         axis.set_ylabel("y")
         figure.colorbar(mesh, ax=axis)
-    figure.suptitle(f"Layer thickness at {time_day:.3f} days")
+    figure.suptitle(f"Layer thickness comparison at day {time_day:.3f}", fontsize=16)
+    figure.text(
+        0.5,
+        0.98,
+        f"Time = {time_day:.3f} days",
+        ha="center",
+        va="top",
+        fontsize=14,
+        bbox={"facecolor": "white", "alpha": 0.85, "edgecolor": "black"},
+    )
     figure.canvas.draw()
     frame = np.asarray(figure.canvas.buffer_rgba())[..., :3]
     plt.close(figure)
