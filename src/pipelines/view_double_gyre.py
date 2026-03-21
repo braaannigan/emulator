@@ -20,17 +20,34 @@ from src.viewer.emulator_viewer import (
 )
 
 
-st.set_page_config(page_title="Double Gyre Viewer", layout="wide")
-st.title("Double Gyre Viewer")
-page = st.sidebar.radio("Page", ["Double Gyre", "Emulator Evaluation"])
+def configure_app(st_module=st) -> None:
+    st_module.set_page_config(page_title="Double Gyre Viewer", layout="wide")
+    st_module.title("Double Gyre Viewer")
 
-if page == "Double Gyre":
+
+def _select_requested_day(st_module, dataset, label: str) -> float:
+    available_days = [float(day) for day in dataset["time_days"].values.tolist()]
+    min_day = min(available_days)
+    max_day = max(available_days)
+    if len(available_days) == 1:
+        requested_day = available_days[0]
+        st_module.sidebar.caption(f"Only one timestep available: {requested_day:.3f} days")
+        return requested_day
+    return st_module.sidebar.slider(
+        label,
+        min_value=min_day,
+        max_value=max_day,
+        value=min_day,
+    )
+
+
+def render_double_gyre_page(st_module=st) -> None:
     experiments = list_experiments()
     if not experiments:
-        st.warning("No experiments found under data/raw/double_gyre.")
-        st.stop()
+        st_module.warning("No experiments found under data/raw/double_gyre.")
+        st_module.stop()
 
-    selected_experiment = st.sidebar.selectbox(
+    selected_experiment = st_module.sidebar.selectbox(
         "Experiment",
         experiments,
         format_func=lambda experiment: experiment.experiment_id,
@@ -38,53 +55,43 @@ if page == "Double Gyre":
 
     dataset = open_experiment_dataset(selected_experiment.netcdf_path)
     try:
-        available_days = [float(day) for day in dataset["time_days"].values.tolist()]
-        min_day = min(available_days)
-        max_day = max(available_days)
-        if len(available_days) == 1:
-            requested_day = available_days[0]
-            st.sidebar.caption(f"Only one timestep available: {requested_day:.3f} days")
-        else:
-            requested_day = st.sidebar.slider(
-                "Timestep (days)",
-                min_value=min_day,
-                max_value=max_day,
-                value=min_day,
-            )
+        requested_day = _select_requested_day(st_module, dataset, "Timestep (days)")
         layer_options = available_layers(dataset)
-        selected_layer = st.sidebar.selectbox("Layer", layer_options, index=0)
+        selected_layer = st_module.sidebar.selectbox("Layer", layer_options, index=0)
         fields = available_fields(dataset)
-        selected_fields = st.sidebar.multiselect("Fields", fields, default=fields)
+        selected_fields = st_module.sidebar.multiselect("Fields", fields, default=fields)
 
         selected_day, selected_dataset = select_time(dataset, requested_day)
-        st.caption(f"Showing model state at {selected_day:.3f} days")
+        st_module.caption(f"Showing model state at {selected_day:.3f} days")
 
         if not selected_fields:
-            st.info("Choose at least one field in the sidebar.")
-            st.stop()
+            st_module.info("Choose at least one field in the sidebar.")
+            st_module.stop()
 
-        columns = st.columns(min(2, len(selected_fields)))
+        columns = st_module.columns(min(2, len(selected_fields)))
         for index, field_name in enumerate(selected_fields):
             column = columns[index % len(columns)]
             with column:
                 figure = field_to_heatmap(selected_dataset, field_name, layer_index=selected_layer)
-                st.plotly_chart(figure, use_container_width=True)
+                st_module.plotly_chart(figure, use_container_width=True)
         metadata = {
             "experiment_id": selected_experiment.experiment_id,
             "netcdf_path": str(selected_experiment.netcdf_path),
             **{key: value for key, value in dataset.attrs.items()},
         }
-        st.subheader("Experiment Metadata")
-        st.json(metadata)
+        st_module.subheader("Experiment Metadata")
+        st_module.json(metadata)
     finally:
         dataset.close()
-else:
+
+
+def render_emulator_evaluation_page(st_module=st) -> None:
     experiments = list_emulator_experiments()
     if not experiments:
-        st.warning("No emulator evaluation outputs found under data/raw/emulator/cnn_thickness.")
-        st.stop()
+        st_module.warning("No emulator evaluation outputs found under data/raw/emulator/cnn_thickness.")
+        st_module.stop()
 
-    selected_experiment = st.sidebar.selectbox(
+    selected_experiment = st_module.sidebar.selectbox(
         "Evaluation Experiment",
         experiments,
         format_func=lambda experiment: experiment.experiment_id,
@@ -93,36 +100,24 @@ else:
     dataset = open_rollout_dataset(selected_experiment.rollout_path)
     try:
         metrics = load_metrics(selected_experiment.metrics_path)
-        available_days = [float(day) for day in dataset["time_days"].values.tolist()]
-        min_day = min(available_days)
-        max_day = max(available_days)
-        if len(available_days) == 1:
-            requested_day = available_days[0]
-            st.sidebar.caption(f"Only one timestep available: {requested_day:.3f} days")
-        else:
-            requested_day = st.sidebar.slider(
-                "Evaluation Timestep (days)",
-                min_value=min_day,
-                max_value=max_day,
-                value=min_day,
-            )
+        requested_day = _select_requested_day(st_module, dataset, "Evaluation Timestep (days)")
 
         if metrics:
-            st.caption(
+            st_module.caption(
                 f"Eval experiment `{selected_experiment.experiment_id}` with overall MSE {float(metrics['mse']):.6f}"
             )
         else:
-            st.caption(f"Eval experiment `{selected_experiment.experiment_id}`")
+            st_module.caption(f"Eval experiment `{selected_experiment.experiment_id}`")
 
-        st.plotly_chart(mse_timeseries_figure(dataset), use_container_width=True)
+        st_module.plotly_chart(mse_timeseries_figure(dataset), use_container_width=True)
 
         selected_day, selected_dataset = select_time(dataset, requested_day)
-        st.caption(f"Showing evaluation rollout at {selected_day:.3f} days")
+        st_module.caption(f"Showing evaluation rollout at {selected_day:.3f} days")
         zmin, zmax = rollout_color_limits(dataset)
-        st.caption(f"Shared color scale: {zmin:.3f} to {zmax:.3f}")
-        columns = st.columns(2)
+        st_module.caption(f"Shared color scale: {zmin:.3f} to {zmax:.3f}")
+        columns = st_module.columns(2)
         with columns[0]:
-            st.plotly_chart(
+            st_module.plotly_chart(
                 comparison_heatmap_figure(
                     selected_dataset,
                     "truth_layer_thickness",
@@ -134,7 +129,7 @@ else:
                 use_container_width=True,
             )
         with columns[1]:
-            st.plotly_chart(
+            st_module.plotly_chart(
                 comparison_heatmap_figure(
                     selected_dataset,
                     "rollout_layer_thickness",
@@ -150,7 +145,20 @@ else:
             "rollout_path": str(selected_experiment.rollout_path),
             **metrics,
         }
-        st.subheader("Experiment Metadata")
-        st.json(metadata)
+        st_module.subheader("Experiment Metadata")
+        st_module.json(metadata)
     finally:
         dataset.close()
+
+
+def main(st_module=st) -> None:
+    configure_app(st_module)
+    page = st_module.sidebar.radio("Page", ["Double Gyre", "Emulator Evaluation"])
+    if page == "Double Gyre":
+        render_double_gyre_page(st_module)
+    else:
+        render_emulator_evaluation_page(st_module)
+
+
+if __name__ == "__main__":
+    main()
