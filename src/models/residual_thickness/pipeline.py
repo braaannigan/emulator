@@ -51,7 +51,8 @@ def run_residual_thickness_experiment(config: ResidualThicknessConfig | str) -> 
         config.checkpoint_path,
     )
     save_rollout_dataset(config.rollout_path, truth=truth, rollout=rollout, time_days=eval_time_days, y=y, x=x)
-    create_rollout_comparison_animation(config.rollout_path, config.animation_path, fps=config.animation_fps)
+    if config.animation_fps > 0:
+        create_rollout_comparison_animation(config.rollout_path, config.animation_path, fps=config.animation_fps)
 
     metrics = {
         "source_experiment_id": config.source_experiment_id,
@@ -84,4 +85,7 @@ def run_residual_thickness_experiment(config: ResidualThicknessConfig | str) -> 
         "animation_path": str(config.animation_path),
         "checkpoint_path": str(config.checkpoint_path),
         "mse": mse,
+        "eval_mse_mean": float(per_timestep_mse.mean()),
+        "eval_mse_last": float(per_timestep_mse[-1]),
+        "train_loss": float(train_info["train_loss"]),
     }
