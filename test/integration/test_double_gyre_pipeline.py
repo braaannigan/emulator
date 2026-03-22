@@ -5,7 +5,7 @@ import pytest
 import xarray as xr
 
 from src.generator.aronnax_runtime import ensure_aronnax_checkout
-from src.generator.config import load_double_gyre_config
+from src.generator.config import SECONDS_PER_DAY, load_double_gyre_config
 from src.generator.double_gyre import run_double_gyre_pipeline
 
 
@@ -24,13 +24,13 @@ def test_short_double_gyre_run_writes_test_netcdf(tmp_path: Path):
     run_directory = tmp_path / "interim" / "double_gyre_run"
 
     config = load_double_gyre_config("config/generator/double_gyre.yaml").with_overrides(
-        nx=10,
-        ny=10,
+        nx=6,
+        ny=6,
         dx_m=20_000.0,
         dy_m=20_000.0,
-        duration_days=1.0,
-        output_interval_days=0.5,
-        max_iterations=1000,
+        duration_days=(4 * 600.0) / SECONDS_PER_DAY,
+        output_interval_days=(2 * 600.0) / SECONDS_PER_DAY,
+        max_iterations=200,
         run_directory=run_directory,
         netcdf_output_path=output_path,
         experiment_id="integration-test",

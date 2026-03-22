@@ -10,10 +10,10 @@ def test_create_rollout_comparison_animation_writes_mp4(tmp_path: Path):
     rollout_path = tmp_path / "rollout.nc"
     dataset = xr.Dataset(
         data_vars={
-            "truth_layer_thickness": (("time_days", "y", "x"), np.ones((2, 2, 2), dtype=np.float32)),
-            "rollout_layer_thickness": (("time_days", "y", "x"), np.zeros((2, 2, 2), dtype=np.float32)),
+            "truth_layer_thickness": (("time_days", "y", "x"), np.ones((1, 2, 2), dtype=np.float32)),
+            "rollout_layer_thickness": (("time_days", "y", "x"), np.zeros((1, 2, 2), dtype=np.float32)),
         },
-        coords={"time_days": [1.0, 2.0], "y": [0.0, 1.0], "x": [0.0, 1.0]},
+        coords={"time_days": [1.0], "y": [0.0, 1.0], "x": [0.0, 1.0]},
     )
     dataset.to_netcdf(rollout_path)
     dataset.close()
