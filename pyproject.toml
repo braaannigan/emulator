@@ -37,6 +37,7 @@ packages = ["src", "src.animation", "src.generator", "src.models", "src.models.c
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
+addopts = "-m 'not integration'"
 markers = [
     "integration: end-to-end tests that execute the model runtime",
 ]
