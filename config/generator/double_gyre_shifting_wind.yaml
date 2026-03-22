@@ -1,11 +1,11 @@
-experiment_name: double_gyre
+experiment_name: double_gyre_shifting_wind
 nx: 100
 ny: 200
 layers: 1
 dx_m: 10000.0
 dy_m: 10000.0
 dt_seconds: 600.0
-duration_days: 70.0
+duration_days: 400.0
 output_interval_days: 7.0
 viscosity: 500.0
 thickness_diffusivity: 0.0
@@ -24,8 +24,10 @@ density: 1035.0
 f0: 1.0e-5
 beta: 2.0e-11
 wind_stress_max: 0.05
-run_directory: data/interim/double_gyre_run
-netcdf_output_path: data/raw/double_gyre/double_gyre.nc
+wind_shift_amplitude_m: 40000.0
+wind_shift_period_days: 40.0
+run_directory: data/interim/double_gyre_shifting_wind_run
+netcdf_output_path: data/raw/double_gyre_shifting_wind/double_gyre.nc
 executable_name: aronnax_core
 output_variables:
   - snap.h

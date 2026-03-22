@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-from src.pipelines import animate_double_gyre, run_double_gyre, train_cnn_thickness
+from src.pipelines import animate_double_gyre, run_double_gyre, train_cnn_thickness, train_residual_thickness
 
 
 def test_animate_double_gyre_resolve_netcdf_path_prefers_explicit_path():
@@ -66,3 +66,31 @@ def test_run_double_gyre_main_prints_output_path(monkeypatch, capsys):
 
     assert exit_code == 0
     assert "output.nc" in captured.out
+
+
+def test_train_residual_thickness_main_prints_artifact_paths(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "src.pipelines.train_residual_thickness.parse_args",
+        lambda: argparse.Namespace(
+            config="config/emulator/residual_thickness.yaml",
+            source_experiment_id=None,
+            experiment_id="demo",
+            epochs=2,
+        ),
+    )
+    monkeypatch.setattr(
+        "src.pipelines.train_residual_thickness.run_residual_thickness_experiment",
+        lambda config: {
+            "metrics_path": "metrics.json",
+            "rollout_path": "rollout.nc",
+            "animation_path": "comparison.mp4",
+        },
+    )
+
+    exit_code = train_residual_thickness.main()
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "metrics.json" in captured.out
+    assert "rollout.nc" in captured.out
+    assert "comparison.mp4" in captured.out

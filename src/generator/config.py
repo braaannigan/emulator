@@ -12,6 +12,7 @@ SECONDS_PER_DAY = 86_400
 
 @dataclass(frozen=True)
 class DoubleGyreConfig:
+    experiment_name: str
     nx: int
     ny: int
     layers: int
@@ -38,6 +39,9 @@ class DoubleGyreConfig:
     beta: float
     run_directory: Path
     netcdf_output_path: Path
+    wind_stress_max: float = 0.05
+    wind_shift_amplitude_m: float = 0.0
+    wind_shift_period_days: float | None = None
     executable_name: str = "aronnax_core"
     n_proc_x: int = 1
     n_proc_y: int = 1
@@ -123,6 +127,7 @@ def load_double_gyre_config(path: str | Path) -> DoubleGyreConfig:
         "density",
         "f0",
         "beta",
+        "experiment_name",
         "run_directory",
         "netcdf_output_path",
     }
@@ -131,6 +136,7 @@ def load_double_gyre_config(path: str | Path) -> DoubleGyreConfig:
         raise ValueError(f"double_gyre.yaml is missing required keys: {', '.join(missing)}")
 
     return DoubleGyreConfig(
+        experiment_name=str(payload["experiment_name"]),
         nx=int(payload["nx"]),
         ny=int(payload["ny"]),
         layers=int(payload["layers"]),
@@ -155,6 +161,13 @@ def load_double_gyre_config(path: str | Path) -> DoubleGyreConfig:
         density=float(payload["density"]),
         f0=float(payload["f0"]),
         beta=float(payload["beta"]),
+        wind_stress_max=float(payload.get("wind_stress_max", 0.05)),
+        wind_shift_amplitude_m=float(payload.get("wind_shift_amplitude_m", 0.0)),
+        wind_shift_period_days=(
+            float(payload["wind_shift_period_days"])
+            if payload.get("wind_shift_period_days") is not None
+            else None
+        ),
         run_directory=Path(payload["run_directory"]),
         netcdf_output_path=Path(payload["netcdf_output_path"]),
         executable_name=str(payload.get("executable_name", "aronnax_core")),

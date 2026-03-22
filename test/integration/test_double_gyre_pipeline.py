@@ -14,18 +14,14 @@ def _has_runtime_dependencies() -> bool:
 
 
 @pytest.mark.integration
-def test_short_double_gyre_run_writes_test_netcdf():
+def test_short_double_gyre_run_writes_test_netcdf(tmp_path: Path):
     if not _has_runtime_dependencies():
         pytest.skip("Aronnax runtime requires git plus mpif90 and mpirun.")
 
     ensure_aronnax_checkout()
 
-    output_path = Path("data/raw/double_gyre/test_double_gyre.nc")
-    run_directory = Path("data/interim/test_double_gyre_run")
-    if output_path.exists():
-        output_path.unlink()
-    if run_directory.exists():
-        shutil.rmtree(run_directory)
+    output_path = tmp_path / "raw" / "double_gyre.nc"
+    run_directory = tmp_path / "interim" / "double_gyre_run"
 
     config = load_double_gyre_config("config/generator/double_gyre.yaml").with_overrides(
         nx=10,
@@ -35,8 +31,8 @@ def test_short_double_gyre_run_writes_test_netcdf():
         duration_days=1.0,
         output_interval_days=0.5,
         max_iterations=1000,
-        run_directory=Path("data/interim/test_double_gyre_run"),
-        netcdf_output_path=Path("data/raw/double_gyre/test_double_gyre.nc"),
+        run_directory=run_directory,
+        netcdf_output_path=output_path,
         experiment_id="integration-test",
     )
 

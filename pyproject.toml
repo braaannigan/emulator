@@ -19,6 +19,7 @@ dependencies = [
     "numpy>=2.0.0",
     "plotly>=6.0.0",
     "pyyaml>=6.0.2",
+    "ray[tune]>=2.54.0",
     "scipy>=1.15.0",
     "streamlit>=1.44.0",
     "torch>=2.7.0",
@@ -32,7 +33,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["src", "src.animation", "src.generator", "src.models", "src.models.cnn_thickness", "src.pipelines", "src.viewer"]
+packages = ["src", "src.animation", "src.generator", "src.models", "src.models.cnn_thickness", "src.models.residual_thickness", "src.pipelines", "src.viewer"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]

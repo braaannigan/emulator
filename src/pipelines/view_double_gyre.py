@@ -9,6 +9,7 @@ from src.viewer.double_gyre_viewer import (
     list_experiments,
     open_experiment_dataset,
     select_time,
+    wind_stress_figure,
 )
 from src.viewer.emulator_viewer import (
     comparison_heatmap_figure,
@@ -74,6 +75,7 @@ def render_double_gyre_page(st_module=st) -> None:
             with column:
                 figure = field_to_heatmap(selected_dataset, field_name, layer_index=selected_layer)
                 st_module.plotly_chart(figure, use_container_width=True)
+        st_module.plotly_chart(wind_stress_figure(dataset), use_container_width=True)
         metadata = {
             "experiment_id": selected_experiment.experiment_id,
             "netcdf_path": str(selected_experiment.netcdf_path),
