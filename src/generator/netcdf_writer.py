@@ -55,7 +55,7 @@ def write_netcdf_output(config: DoubleGyreConfig) -> Path:
 def _dataset_attrs(config: DoubleGyreConfig) -> dict[str, str]:
     return {
         "model": "Aronnax",
-        "experiment": "double_gyre",
+        "experiment": config.experiment_name,
         "duration_days": str(config.duration_days),
         "output_interval_days": str(config.output_interval_days),
         "dt_seconds": str(config.dt_seconds),

@@ -105,6 +105,31 @@ def field_to_heatmap(
     return figure
 
 
+def wind_stress_figure(dataset: xr.Dataset) -> go.Figure:
+    if "y" not in dataset.coords:
+        raise ValueError("Dataset must contain a y coordinate to derive wind stress.")
+
+    y = np.asarray(dataset["y"].values, dtype=float)
+    wind_stress = 0.05 * (1.0 - np.cos(2.0 * np.pi * y / np.max(y)))
+    figure = go.Figure(
+        data=[
+            go.Scatter(
+                x=y,
+                y=wind_stress,
+                mode="lines",
+                line={"color": "#b22222", "width": 3},
+                name="zonal_wind_stress",
+            )
+        ]
+    )
+    figure.update_layout(
+        title="Zonal Wind Stress",
+        xaxis_title="y",
+        yaxis_title="wind_stress",
+    )
+    return figure
+
+
 def _spatial_dims(data_array: xr.DataArray) -> tuple[str, str]:
     spatial_dims = [dim for dim in data_array.dims if dim not in {"time_days", "layers"}]
     if len(spatial_dims) != 2:

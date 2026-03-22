@@ -129,10 +129,11 @@ def test_render_double_gyre_page_shows_plots_and_metadata(monkeypatch):
     monkeypatch.setattr("src.pipelines.view_double_gyre.list_experiments", lambda: [experiment])
     monkeypatch.setattr("src.pipelines.view_double_gyre.open_experiment_dataset", lambda path: _double_gyre_dataset())
     monkeypatch.setattr("src.pipelines.view_double_gyre.field_to_heatmap", lambda dataset, field_name, layer_index=0: field_name)
+    monkeypatch.setattr("src.pipelines.view_double_gyre.wind_stress_figure", lambda dataset: "wind_stress")
 
     view_double_gyre.render_double_gyre_page(st)
 
-    assert st.plotly_calls == ["layer_thickness", "zonal_velocity"]
+    assert st.plotly_calls == ["layer_thickness", "zonal_velocity", "wind_stress"]
     assert st.subheaders == ["Experiment Metadata"]
     assert st.json_payloads[0]["experiment_id"] == "exp1"
     assert st.json_payloads[0]["model"] == "Aronnax"

@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
-from src.viewer.double_gyre_viewer import list_experiments, select_time
+from src.viewer.double_gyre_viewer import list_experiments, select_time, wind_stress_figure
 
 
 def test_list_experiments_finds_timestamped_runs(tmp_path: Path):
@@ -43,3 +43,12 @@ def test_select_time_picks_nearest_decimal_day():
 
     assert selected_day == 7.0
     assert selected_dataset["layer_thickness"].shape == (2, 2)
+
+
+def test_wind_stress_figure_uses_expected_profile():
+    dataset = xr.Dataset(coords={"y": [0.0, 1.0, 2.0]})
+
+    figure = wind_stress_figure(dataset)
+
+    assert list(figure.data[0].x) == [0.0, 1.0, 2.0]
+    assert np.allclose(figure.data[0].y, [0.0, 0.1, 0.0])
