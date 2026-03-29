@@ -27,7 +27,7 @@ wind_stress_max: 0.05
 wind_shift_amplitude_m: 40000.0
 wind_shift_period_days: 40.0
 run_directory: data/interim/double_gyre_shifting_wind_run
-netcdf_output_path: data/raw/double_gyre_shifting_wind/double_gyre.nc
+netcdf_output_path: data/raw/double_gyre_shifting_wind/generator/double_gyre.nc
 executable_name: aronnax_core
 output_variables:
   - snap.h

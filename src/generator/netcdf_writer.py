@@ -53,10 +53,17 @@ def write_netcdf_output(config: DoubleGyreConfig) -> Path:
 
 
 def _dataset_attrs(config: DoubleGyreConfig) -> dict[str, str]:
-    return {
+    attrs = {
         "model": "Aronnax",
         "experiment": config.experiment_name,
         "duration_days": str(config.duration_days),
         "output_interval_days": str(config.output_interval_days),
         "dt_seconds": str(config.dt_seconds),
+        "wind_stress_max": str(config.wind_stress_max),
+        "wind_shift_amplitude_m": str(config.wind_shift_amplitude_m),
     }
+    if config.wind_shift_period_days is not None:
+        attrs["wind_shift_period_days"] = str(config.wind_shift_period_days)
+    if config.wind_record_interval_hours is not None:
+        attrs["wind_record_interval_hours"] = str(config.wind_record_interval_hours)
+    return attrs

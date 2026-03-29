@@ -9,6 +9,7 @@ import xarray as xr
 
 
 DEFAULT_FIELDS = ("layer_thickness", "zonal_velocity", "meridional_velocity")
+SYNTHETIC_WIND_FIELD = "zonal_wind_stress"
 
 
 def default_animation_path(netcdf_path: Path) -> Path:
@@ -22,6 +23,9 @@ def animation_output_path(netcdf_path: Path, output_path: str | Path | None = No
 
 
 def compute_color_limits(dataset: xr.Dataset, field_name: str) -> tuple[float, float]:
+    if field_name == SYNTHETIC_WIND_FIELD:
+        wind = wind_stress_series(dataset)
+        return float(np.nanmin(wind)), float(np.nanmax(wind))
     data = np.asarray(dataset[field_name].values, dtype=float)
     if field_name in {"zonal_velocity", "meridional_velocity"}:
         max_abs = float(np.nanmax(np.abs(data)))
@@ -41,10 +45,11 @@ def create_animation(
 
     dataset = xr.open_dataset(netcdf_path)
     try:
+        fields = resolved_fields(dataset, fields)
         color_limits = {
             field_name: compute_color_limits(dataset, field_name)
             for field_name in fields
-            if field_name in dataset
+            if field_name in dataset or field_name == SYNTHETIC_WIND_FIELD
         }
         if not color_limits:
             raise ValueError(f"No requested fields {fields} found in {netcdf_path}.")
@@ -64,12 +69,15 @@ def render_frame(
     time_day: float,
     color_limits: dict[str, tuple[float, float]],
 ) -> np.ndarray:
-    fields = [field_name for field_name in DEFAULT_FIELDS if field_name in dataset_at_time]
+    fields = [field_name for field_name in color_limits]
     figure, axes = plt.subplots(1, len(fields), figsize=(6 * len(fields), 5), constrained_layout=True)
     if len(fields) == 1:
         axes = [axes]
 
     for axis, field_name in zip(axes, fields):
+        if field_name == SYNTHETIC_WIND_FIELD:
+            render_wind_stress_panel(axis, dataset_at_time, color_limits[field_name])
+            continue
         data_array = dataset_at_time[field_name]
         if "layers" in data_array.dims:
             data_array = data_array.sel(layers=0)
@@ -107,6 +115,71 @@ def render_frame(
     frame = np.asarray(figure.canvas.buffer_rgba())[..., :3]
     plt.close(figure)
     return frame
+
+
+def resolved_fields(dataset: xr.Dataset, requested_fields: tuple[str, ...]) -> tuple[str, ...]:
+    fields = tuple(field_name for field_name in requested_fields if field_name in dataset)
+    if can_derive_wind_stress(dataset) and SYNTHETIC_WIND_FIELD not in fields:
+        fields = (fields[0], SYNTHETIC_WIND_FIELD, *fields[1:]) if "layer_thickness" in fields else (*fields, SYNTHETIC_WIND_FIELD)
+    return fields
+
+
+def can_derive_wind_stress(dataset: xr.Dataset) -> bool:
+    attrs = dataset.attrs
+    return (
+        "y" in dataset.coords
+        and attrs.get("experiment") == "double_gyre_shifting_wind"
+        and "wind_stress_max" in attrs
+        and "wind_shift_amplitude_m" in attrs
+        and "wind_shift_period_days" in attrs
+    )
+
+
+def wind_stress_series(dataset: xr.Dataset) -> np.ndarray:
+    if not can_derive_wind_stress(dataset):
+        raise ValueError("Dataset does not contain enough metadata to derive shifting wind stress.")
+
+    time_days = np.asarray(dataset["time_days"].values, dtype=float)
+    y = np.asarray(dataset["y"].values, dtype=float)
+    x = np.asarray(dataset["x"].values, dtype=float)
+    y_grid = np.repeat(y[:, np.newaxis], x.size, axis=1)
+    y_max = float(np.max(y))
+    wind_stress_max = float(dataset.attrs["wind_stress_max"])
+    shift_amplitude_m = float(dataset.attrs["wind_shift_amplitude_m"])
+    shift_period_days = float(dataset.attrs["wind_shift_period_days"])
+
+    output = np.empty((time_days.size, y.size, x.size), dtype=float)
+    for index, time_day in enumerate(time_days):
+        phase = 2.0 * np.pi * (time_day / shift_period_days)
+        shift_m = shift_amplitude_m * np.sin(phase)
+        shifted_y = np.clip(y_grid - shift_m, 0.0, y_max)
+        output[index] = wind_stress_max * (1.0 - np.cos(2.0 * np.pi * shifted_y / y_max))
+    return output
+
+
+def wind_stress_at_time(dataset_at_time: xr.Dataset) -> np.ndarray:
+    series = wind_stress_series(dataset_at_time.expand_dims("time_days"))
+    return series[0]
+
+
+def render_wind_stress_panel(axis, dataset_at_time: xr.Dataset, color_limits: tuple[float, float]) -> None:
+    wind = wind_stress_at_time(dataset_at_time)
+    y = dataset_at_time["y"].values
+    x = dataset_at_time["x"].values
+    vmin, vmax = color_limits
+    mesh = axis.pcolormesh(
+        x,
+        y,
+        wind,
+        cmap="viridis",
+        shading="auto",
+        vmin=vmin,
+        vmax=vmax,
+    )
+    axis.figure.colorbar(mesh, ax=axis)
+    axis.set_title(SYNTHETIC_WIND_FIELD)
+    axis.set_xlabel("x")
+    axis.set_ylabel("y")
 
 
 def spatial_dims(data_array: xr.DataArray) -> tuple[str, str]:

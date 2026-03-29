@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 
 from .aronnax_runtime import load_aronnax_modules
+from .config import SECONDS_PER_DAY
 from .config import DoubleGyreConfig, load_double_gyre_config
 from .forcing import build_shifting_double_gyre_wind, build_static_double_gyre_wind
 from .netcdf_writer import write_netcdf_output
@@ -18,16 +19,24 @@ def _require_aronnax_driver():
 
 
 def build_zonal_wind(config: DoubleGyreConfig):
-    if config.experiment_name == "double_gyre":
-        return build_static_double_gyre_wind(config), {}
     if config.experiment_name == "double_gyre_shifting_wind":
-        total_records = max(2, config.n_time_steps)
+        forcing_cycle_seconds = config.wind_shift_period_days * SECONDS_PER_DAY
+        snapshot_seconds = config.dt_seconds
+        if config.wind_record_interval_hours is not None:
+            snapshot_seconds = config.wind_record_interval_hours * 3600.0
+        total_records_float = forcing_cycle_seconds / snapshot_seconds
+        if round(total_records_float) != total_records_float:
+            raise ValueError("wind_shift_period_days must align exactly with the wind record interval.")
+        total_records = max(2, int(total_records_float))
         return build_shifting_double_gyre_wind(config), {
             "wind_n_records": total_records,
-            "wind_period": config.wind_shift_period_days * 86_400,
+            # Aronnax expects the time between adjacent wind snapshots here, not the full cycle length.
+            "wind_period": snapshot_seconds,
             "wind_loop_fields": True,
             "wind_interpolate": True,
         }
+    if config.experiment_name.startswith("double_gyre"):
+        return build_static_double_gyre_wind(config), {}
     raise ValueError(f"Unsupported experiment_name {config.experiment_name!r}")
 
 

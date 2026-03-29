@@ -7,16 +7,35 @@ import numpy as np
 import plotly.graph_objects as go
 import xarray as xr
 
-EXPERIMENT_ROOT = Path("data/raw/double_gyre")
+RAW_EXPERIMENTS_ROOT = Path("data/raw")
 
 
 @dataclass(frozen=True)
 class ExperimentRecord:
+    physical_experiment_name: str
     experiment_id: str
     netcdf_path: Path
 
 
-def list_experiments(root: Path = EXPERIMENT_ROOT) -> list[ExperimentRecord]:
+def list_experiments(root: Path = RAW_EXPERIMENTS_ROOT) -> list[ExperimentRecord]:
+    if _looks_like_generator_root(root):
+        return _list_experiments_from_generator_root(root)
+
+    experiments: list[ExperimentRecord] = []
+    if not root.exists():
+        return experiments
+
+    for physical_root in sorted(path for path in root.iterdir() if path.is_dir()):
+        generator_root = physical_root / "generator"
+        experiments.extend(_list_experiments_from_generator_root(generator_root))
+    return sorted(
+        experiments,
+        key=lambda experiment: (experiment.experiment_id, experiment.physical_experiment_name),
+        reverse=True,
+    )
+
+
+def _list_experiments_from_generator_root(root: Path) -> list[ExperimentRecord]:
     experiments: list[ExperimentRecord] = []
     if not root.exists():
         return experiments
@@ -24,6 +43,7 @@ def list_experiments(root: Path = EXPERIMENT_ROOT) -> list[ExperimentRecord]:
     for netcdf_path in sorted(root.glob("*/double_gyre.nc"), reverse=True):
         experiments.append(
             ExperimentRecord(
+                physical_experiment_name=root.parent.name,
                 experiment_id=netcdf_path.parent.name,
                 netcdf_path=netcdf_path,
             )
@@ -110,7 +130,9 @@ def wind_stress_figure(dataset: xr.Dataset) -> go.Figure:
         raise ValueError("Dataset must contain a y coordinate to derive wind stress.")
 
     y = np.asarray(dataset["y"].values, dtype=float)
-    wind_stress = 0.05 * (1.0 - np.cos(2.0 * np.pi * y / np.max(y)))
+    wind_stress_max = float(dataset.attrs.get("wind_stress_max", 0.05))
+    wind_stress = wind_stress_max * (1.0 - np.cos(2.0 * np.pi * y / np.max(y)))
+    experiment_name = str(dataset.attrs.get("experiment", "double_gyre"))
     figure = go.Figure(
         data=[
             go.Scatter(
@@ -123,11 +145,15 @@ def wind_stress_figure(dataset: xr.Dataset) -> go.Figure:
         ]
     )
     figure.update_layout(
-        title="Zonal Wind Stress",
+        title=f"Zonal Wind Stress ({experiment_name})",
         xaxis_title="y",
         yaxis_title="wind_stress",
     )
     return figure
+
+
+def _looks_like_generator_root(root: Path) -> bool:
+    return any(root.glob("*/double_gyre.nc"))
 
 
 def _spatial_dims(data_array: xr.DataArray) -> tuple[str, str]:

@@ -21,7 +21,7 @@ def test_resolve_hpo_base_config_uses_absolute_repo_paths():
 
     resolved = _resolve_hpo_base_config(config)
 
-    assert Path(resolved.source_output_filename).is_absolute()
+    assert resolved.source_data_root.is_absolute()
     assert resolved.raw_output_root.is_absolute()
     assert resolved.interim_output_root.is_absolute()
 

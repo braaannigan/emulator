@@ -11,5 +11,5 @@ num_layers: 3
 kernel_size: 3
 random_seed: 7
 animation_fps: 4
-raw_output_root: data/raw/emulator/cnn_thickness
+raw_output_root: data/raw/double_gyre/emulator/cnn_thickness
 interim_output_root: data/interim/emulator/cnn_thickness

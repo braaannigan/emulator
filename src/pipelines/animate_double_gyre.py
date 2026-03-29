@@ -10,8 +10,12 @@ from src.viewer.double_gyre_viewer import list_experiments
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create an MP4 animation for a double gyre experiment.")
     parser.add_argument(
+        "--experiment-name",
+        help="Optional experiment family under data/raw, for example double_gyre_shifting_wind.",
+    )
+    parser.add_argument(
         "--experiment-id",
-        help="Experiment directory name under data/raw/double_gyre. Defaults to the most recent experiment.",
+        help="Experiment directory name under the selected experiment family. Defaults to the most recent experiment.",
     )
     parser.add_argument(
         "--netcdf-path",
@@ -35,13 +39,20 @@ def resolve_netcdf_path(args: argparse.Namespace) -> Path:
         return Path(args.netcdf_path)
 
     experiments = list_experiments()
+    experiment_name = getattr(args, "experiment_name", None)
+    if experiment_name is not None:
+        experiments = [experiment for experiment in experiments if experiment.experiment_name == experiment_name]
     if not experiments:
-        raise FileNotFoundError("No experiments found under data/raw/double_gyre.")
+        raise FileNotFoundError("No experiments found under data/raw matching the requested filters.")
 
     if args.experiment_id:
-        for experiment in experiments:
-            if experiment.experiment_id == args.experiment_id:
-                return experiment.netcdf_path
+        matches = [experiment for experiment in experiments if experiment.experiment_id == args.experiment_id]
+        if len(matches) == 1:
+            return matches[0].netcdf_path
+        if len(matches) > 1:
+            raise FileNotFoundError(
+                f"Experiment {args.experiment_id!r} matched multiple experiment families; specify --experiment-name."
+            )
         raise FileNotFoundError(f"Experiment {args.experiment_id!r} was not found.")
 
     return experiments[0].netcdf_path

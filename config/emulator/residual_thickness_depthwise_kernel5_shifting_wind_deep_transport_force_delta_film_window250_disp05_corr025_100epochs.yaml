@@ -1,0 +1,29 @@
+source_data_root: data/raw/double_gyre_shifting_wind/generator
+source_experiment_id: 20260323T123500-period300d-duration5000d-shift160km
+source_output_filename: double_gyre.nc
+field_name: layer_thickness
+state_fields:
+  - layer_thickness
+train_fraction: 0.8
+batch_size: 2
+epochs: 100
+learning_rate: 1.0e-3
+weight_decay: 5.0e-4
+hidden_channels: 16
+num_blocks: 6
+kernel_size: 5
+model_variant: transport
+block_type: depthwise_separable
+normalization: none
+dilation_cycle: 1
+state_history: 1
+forcing_mode: wind_delta
+forcing_integration: film
+gradient_loss_weight: 0.0
+eval_window_days: 250
+transport_displacement_scale: 0.5
+transport_correction_scale: 0.25
+random_seed: 7
+animation_fps: 4
+raw_output_root: data/raw/double_gyre_shifting_wind/emulator/residual_thickness
+interim_output_root: data/interim/emulator/residual_thickness

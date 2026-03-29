@@ -45,13 +45,13 @@ def _select_requested_day(st_module, dataset, label: str) -> float:
 def render_double_gyre_page(st_module=st) -> None:
     experiments = list_experiments()
     if not experiments:
-        st_module.warning("No experiments found under data/raw/double_gyre.")
+        st_module.warning("No raw generator experiments found under data/raw.")
         st_module.stop()
 
     selected_experiment = st_module.sidebar.selectbox(
         "Experiment",
         experiments,
-        format_func=lambda experiment: experiment.experiment_id,
+        format_func=lambda experiment: f"{experiment.physical_experiment_name} / {experiment.experiment_id}",
     )
 
     dataset = open_experiment_dataset(selected_experiment.netcdf_path)
@@ -77,6 +77,7 @@ def render_double_gyre_page(st_module=st) -> None:
                 st_module.plotly_chart(figure, use_container_width=True)
         st_module.plotly_chart(wind_stress_figure(dataset), use_container_width=True)
         metadata = {
+            "physical_experiment_name": selected_experiment.physical_experiment_name,
             "experiment_id": selected_experiment.experiment_id,
             "netcdf_path": str(selected_experiment.netcdf_path),
             **{key: value for key, value in dataset.attrs.items()},
@@ -90,13 +91,15 @@ def render_double_gyre_page(st_module=st) -> None:
 def render_emulator_evaluation_page(st_module=st) -> None:
     experiments = list_emulator_experiments()
     if not experiments:
-        st_module.warning("No emulator evaluation outputs found under data/raw/emulator/cnn_thickness.")
+        st_module.warning("No emulator evaluation outputs found under data/raw.")
         st_module.stop()
 
     selected_experiment = st_module.sidebar.selectbox(
         "Evaluation Experiment",
         experiments,
-        format_func=lambda experiment: experiment.experiment_id,
+        format_func=lambda experiment: (
+            f"{experiment.physical_experiment_name} / {experiment.emulator_name} / {experiment.experiment_id}"
+        ),
     )
 
     dataset = open_rollout_dataset(selected_experiment.rollout_path)
@@ -105,8 +108,9 @@ def render_emulator_evaluation_page(st_module=st) -> None:
         requested_day = _select_requested_day(st_module, dataset, "Evaluation Timestep (days)")
 
         if metrics:
+            overall_mse = float(metrics.get("eval_mse_mean", metrics.get("mse", 0.0)))
             st_module.caption(
-                f"Eval experiment `{selected_experiment.experiment_id}` with overall MSE {float(metrics['mse']):.6f}"
+                f"Eval experiment `{selected_experiment.experiment_id}` with overall MSE {overall_mse:.6f}"
             )
         else:
             st_module.caption(f"Eval experiment `{selected_experiment.experiment_id}`")
@@ -143,6 +147,8 @@ def render_emulator_evaluation_page(st_module=st) -> None:
                 use_container_width=True,
             )
         metadata = {
+            "physical_experiment_name": selected_experiment.physical_experiment_name,
+            "emulator_name": selected_experiment.emulator_name,
             "evaluation_experiment_id": selected_experiment.experiment_id,
             "rollout_path": str(selected_experiment.rollout_path),
             **metrics,

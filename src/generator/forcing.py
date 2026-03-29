@@ -20,7 +20,6 @@ def build_shifting_double_gyre_wind(config: DoubleGyreConfig):
 
     def wind(_, y_coordinates, wind_n_records):
         y_max = float(np.max(y_coordinates))
-        period_seconds = config.wind_shift_period_days * SECONDS_PER_DAY
         output = np.empty((wind_n_records, *y_coordinates.shape), dtype=float)
         for record in range(wind_n_records):
             phase = 2.0 * math.pi * (record / wind_n_records)

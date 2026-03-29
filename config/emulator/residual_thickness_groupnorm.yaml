@@ -14,5 +14,5 @@ normalization: group
 dilation_cycle: 1
 random_seed: 7
 animation_fps: 4
-raw_output_root: data/raw/emulator/residual_thickness
+raw_output_root: data/raw/double_gyre/emulator/residual_thickness
 interim_output_root: data/interim/emulator/residual_thickness

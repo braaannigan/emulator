@@ -25,7 +25,7 @@ f0: 1.0e-5
 beta: 2.0e-11
 wind_stress_max: 0.05
 run_directory: data/interim/double_gyre_run
-netcdf_output_path: data/raw/double_gyre/double_gyre.nc
+netcdf_output_path: data/raw/double_gyre/generator/double_gyre.nc
 executable_name: aronnax_core
 output_variables:
   - snap.h

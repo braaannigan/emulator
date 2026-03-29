@@ -5,7 +5,7 @@ from src.pipelines import animate_double_gyre, run_double_gyre, train_cnn_thickn
 
 
 def test_animate_double_gyre_resolve_netcdf_path_prefers_explicit_path():
-    args = argparse.Namespace(netcdf_path="demo.nc", experiment_id=None)
+    args = argparse.Namespace(netcdf_path="demo.nc", experiment_name=None, experiment_id=None)
 
     resolved = animate_double_gyre.resolve_netcdf_path(args)
 
@@ -13,12 +13,26 @@ def test_animate_double_gyre_resolve_netcdf_path_prefers_explicit_path():
 
 
 def test_animate_double_gyre_resolve_netcdf_path_uses_most_recent(monkeypatch):
-    record = type("Record", (), {"experiment_id": "abc", "netcdf_path": Path("a.nc")})()
+    record = type("Record", (), {"experiment_name": "double_gyre", "experiment_id": "abc", "netcdf_path": Path("a.nc")})()
     monkeypatch.setattr("src.pipelines.animate_double_gyre.list_experiments", lambda: [record])
 
-    resolved = animate_double_gyre.resolve_netcdf_path(argparse.Namespace(netcdf_path=None, experiment_id=None))
+    resolved = animate_double_gyre.resolve_netcdf_path(argparse.Namespace(netcdf_path=None, experiment_name=None, experiment_id=None))
 
     assert resolved == Path("a.nc")
+
+
+def test_animate_double_gyre_resolve_netcdf_path_filters_by_experiment_name(monkeypatch):
+    records = [
+        type("Record", (), {"experiment_name": "double_gyre", "experiment_id": "abc", "netcdf_path": Path("a.nc")})(),
+        type("Record", (), {"experiment_name": "double_gyre_shifting_wind", "experiment_id": "abc", "netcdf_path": Path("b.nc")})(),
+    ]
+    monkeypatch.setattr("src.pipelines.animate_double_gyre.list_experiments", lambda: records)
+
+    resolved = animate_double_gyre.resolve_netcdf_path(
+        argparse.Namespace(netcdf_path=None, experiment_name="double_gyre_shifting_wind", experiment_id="abc")
+    )
+
+    assert resolved == Path("b.nc")
 
 
 def test_train_cnn_thickness_main_prints_artifact_paths(monkeypatch, capsys):

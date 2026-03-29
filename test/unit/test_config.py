@@ -41,7 +41,7 @@ def test_resolve_experiment_nests_outputs_under_timestamped_directory():
     resolved = config.resolve_experiment("20260319T120000")
 
     assert resolved.experiment_id == "20260319T120000"
-    assert resolved.netcdf_output_path == Path("data/raw/double_gyre/20260319T120000/double_gyre.nc")
+    assert resolved.netcdf_output_path == Path("data/raw/double_gyre/generator/20260319T120000/double_gyre.nc")
     assert resolved.run_directory == Path("data/interim/double_gyre_run/20260319T120000")
 
 

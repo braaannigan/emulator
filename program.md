@@ -4,19 +4,32 @@ This file is the canonical guide for running emulator experiments in this reposi
 
 ## Goal
 
-Find a new best emulator for forecasting the Aronnax double-gyre model, with emphasis on rollout quality rather than one-step fit.
+Find a new best emulator for forecasting Aronnax generator experiments, with emphasis on rollout quality rather than one-step fit.
 
 For the current phase:
 - target: `layer_thickness`
 - primary evaluation: autoregressive rollout
 - primary metric: layer-thickness mean squared error over the eval rollout
 
-The incumbent is the best emulator currently documented in [`experiments.md`](/Users/liambrannigan/playModels/emulator/experiments.md).
+## Experiment Context
+
+The active generator experiment is part of the research context and must be explicit.
+
+Canonical registry:
+- [`experiment_list.md`](/Users/liambrannigan/playModels/emulator/experiment_list.md)
+
+For every emulator run:
+- identify the active generator experiment name, for example `double_gyre` or `double_gyre_shifting_wind`
+- map it to its standardized branch abbreviation using [`experiment_list.md`](/Users/liambrannigan/playModels/emulator/experiment_list.md)
+- use the matching experiment log file, for example [`experiments_double_gyre.md`](/Users/liambrannigan/playModels/emulator/experiments_double_gyre.md) or [`experiments_double_gyre_shifting_wind.md`](/Users/liambrannigan/playModels/emulator/experiments_double_gyre_shifting_wind.md)
+- compare challengers only against incumbents from the same generator experiment unless the user explicitly asks for cross-experiment comparison
+
+The incumbent is the best emulator currently documented in the experiment-specific log for the active generator experiment.
 
 ## Data
 
-- source data lives under [`data/raw/double_gyre`](/Users/liambrannigan/playModels/emulator/data/raw/double_gyre)
-- a typical source file is `data/raw/double_gyre/<experiment_id>/double_gyre.nc`
+- source data lives under experiment-specific roots listed in [`experiment_list.md`](/Users/liambrannigan/playModels/emulator/experiment_list.md)
+- a typical source file is `data/raw/<experiment_name>/generator/<experiment_id>/double_gyre.nc`
 - current emulator configs live under [`config/emulator`](/Users/liambrannigan/playModels/emulator/config/emulator)
 - model implementations live under [`src/models`](/Users/liambrannigan/playModels/emulator/src/models)
 - executable entrypoints live under [`src/pipelines`](/Users/liambrannigan/playModels/emulator/src/pipelines)
@@ -47,8 +60,8 @@ Each emulator experiment should produce:
 - `model.pt`
 
 Default output roots:
-- raw artifacts: [`data/raw/emulator/cnn_thickness`](/Users/liambrannigan/playModels/emulator/data/raw/emulator/cnn_thickness)
-- checkpoints: [`data/interim/emulator/cnn_thickness`](/Users/liambrannigan/playModels/emulator/data/interim/emulator/cnn_thickness)
+- raw artifacts: `data/raw/<experiment_name>/emulator/<emulator_name>`
+- checkpoints: `data/interim/emulator/<emulator_name>`
 
 ## Installing New Packages
 
@@ -61,19 +74,20 @@ Default output roots:
 ## Experimental Methodology
 
 1. State a clear hypothesis before changing code.
-2. Create a branch from `main` named `YYYY-MM-DD-short-hypothesis`.
-3. Keep each experiment narrow and change only the challenger.
-4. Run tests before trusting results.
-5. Run the challenger experiment.
-6. Review metrics, rollout error growth, and animation quality.
-7. Compare against the incumbent.
-8. Record the experiment in [`experiments.md`](/Users/liambrannigan/playModels/emulator/experiments.md).
-9. Update this file if the methodology itself improves.
+2. Identify the active generator experiment and its abbreviation from [`experiment_list.md`](/Users/liambrannigan/playModels/emulator/experiment_list.md).
+3. Create a branch from `main` named `YYYY-MM-DD-<abbr>-<emulator_family>-short-hypothesis`.
+4. Keep each experiment narrow and change only the challenger.
+5. Run tests before trusting results.
+6. Run the challenger experiment.
+7. Review metrics, rollout error growth, and animation quality.
+8. Compare against the incumbent for the same generator experiment.
+9. Record the experiment in the matching experiment-specific results file.
+10. Update this file if the methodology itself improves.
 
-Example training command for the current CNN baseline:
+Example training command:
 
 ```bash
-uv run python src/pipelines/train_cnn_thickness.py --source-experiment-id <double_gyre_experiment_id> --experiment-id <emulator_experiment_id>
+uv run python src/pipelines/train_cnn_thickness.py --source-experiment-id <source_experiment_id> --experiment-id <emulator_experiment_id>
 ```
 
 ## Alternative Mode: Hyperparameter Optimization
@@ -89,12 +103,12 @@ If the user does not explicitly request this mode, prefer the normal research lo
 
 ### Purpose
 
-Use this mode when the goal is no longer to explore qualitatively different emulator ideas, but to take the current best approach and improve it through focused parameter tuning.
+Use this mode when the goal is no longer to explore qualitatively different emulator ideas, but to take the current best approach for the active generator experiment and improve it through focused parameter tuning.
 
 ### Entry Rule
 
 When hyperparameter-optimization mode is activated:
-- start from the current incumbent architecture and training setup
+- start from the current incumbent architecture and training setup for the active generator experiment
 - keep the data source and evaluation methodology fixed unless the user explicitly asks otherwise
 - vary only a small number of parameters that are likely to matter most
 
@@ -138,7 +152,8 @@ If tuning finds only negligible changes, record that result explicitly and stop 
 
 ### Logging Requirements
 
-For each tuning experiment, record in [`experiments.md`](/Users/liambrannigan/playModels/emulator/experiments.md):
+For each tuning experiment, record in the experiment-specific log:
+- the active generator experiment
 - that the run was in hyperparameter-optimization mode
 - the incumbent model being tuned
 - the exact tuned parameters
@@ -170,16 +185,18 @@ If several consecutive experiments are only tuning runs, pause and consider whet
 Before concluding an experiment, verify:
 - tests pass
 - coverage is still strong in changed code
+- the active generator experiment is explicit
 - the source experiment id is recorded
 - the emulator experiment id is recorded
 - `metrics.json` includes overall and per-step eval metrics
 - `comparison.mp4` renders correctly
-- [`experiments.md`](/Users/liambrannigan/playModels/emulator/experiments.md) has a clear writeup
+- the correct experiment-specific log has a clear writeup
 
 ## Tips
 
 - the current tiny CNN baseline is mainly a wiring check for train/eval/rollout/animation
 - pay attention to the slope of `eval_mse_per_timestep`, not just its mean
 - when comparing experiments, use the same source full-model run unless the hypothesis is explicitly about dataset dependence
+- do not mix `double_gyre` and `double_gyre_shifting_wind` incumbents in the same leaderboard
 - keep architecture names explicit in code and outputs
 - prefer small, isolated changes so experiment outcomes stay interpretable

@@ -12,13 +12,13 @@ from .pipeline import run_residual_thickness_experiment
 
 def _resolve_hpo_base_config(config: ResidualThicknessConfig) -> ResidualThicknessConfig:
     project_root = Path.cwd().resolve()
-    source_path = (project_root / config.source_netcdf_path).resolve()
+    source_data_root = config.source_data_root if config.source_data_root.is_absolute() else (project_root / config.source_data_root).resolve()
     raw_output_root = config.raw_output_root if config.raw_output_root.is_absolute() else (project_root / config.raw_output_root).resolve()
     interim_output_root = (
         config.interim_output_root if config.interim_output_root.is_absolute() else (project_root / config.interim_output_root).resolve()
     )
     return config.with_overrides(
-        source_output_filename=str(source_path),
+        source_data_root=source_data_root,
         raw_output_root=raw_output_root,
         interim_output_root=interim_output_root,
         animation_fps=0,

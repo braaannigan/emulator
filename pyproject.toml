@@ -33,7 +33,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["src", "src.animation", "src.generator", "src.models", "src.models.cnn_thickness", "src.models.residual_thickness", "src.pipelines", "src.viewer"]
+packages = ["src", "src.animation", "src.generator", "src.models", "src.models.cnn_thickness", "src.models.residual_thickness", "src.models.unet_thickness", "src.pipelines", "src.viewer"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]

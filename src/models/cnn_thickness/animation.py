@@ -16,8 +16,10 @@ def create_rollout_comparison_animation(rollout_path: Path, output_path: Path, f
         time_days = np.asarray(dataset["time_days"].values)
         x = np.asarray(dataset["x"].values)
         y = np.asarray(dataset["y"].values)
-        vmin = float(min(truth.min(), rollout.min()))
-        vmax = float(max(truth.max(), rollout.max()))
+        # Keep the comparison scale anchored to the generator truth field so rollout
+        # excursions do not wash out the visual contrast in the reference solution.
+        vmin = float(truth.min())
+        vmax = float(truth.max())
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with imageio.get_writer(output_path, fps=fps) as writer:

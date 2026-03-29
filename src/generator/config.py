@@ -42,6 +42,7 @@ class DoubleGyreConfig:
     wind_stress_max: float = 0.05
     wind_shift_amplitude_m: float = 0.0
     wind_shift_period_days: float | None = None
+    wind_record_interval_hours: float | None = None
     executable_name: str = "aronnax_core"
     n_proc_x: int = 1
     n_proc_y: int = 1
@@ -166,6 +167,11 @@ def load_double_gyre_config(path: str | Path) -> DoubleGyreConfig:
         wind_shift_period_days=(
             float(payload["wind_shift_period_days"])
             if payload.get("wind_shift_period_days") is not None
+            else None
+        ),
+        wind_record_interval_hours=(
+            float(payload["wind_record_interval_hours"])
+            if payload.get("wind_record_interval_hours") is not None
             else None
         ),
         run_directory=Path(payload["run_directory"]),

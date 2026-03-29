@@ -10,11 +10,13 @@ import xarray as xr
 
 from .double_gyre_viewer import ExperimentRecord, select_time
 
-EMULATOR_EXPERIMENT_ROOT = Path("data/raw/emulator/cnn_thickness")
+EMULATOR_EXPERIMENT_ROOT = Path("data/raw")
 
 
 @dataclass(frozen=True)
 class EmulatorExperimentRecord:
+    physical_experiment_name: str
+    emulator_name: str
     experiment_id: str
     rollout_path: Path
     metrics_path: Path | None
@@ -25,10 +27,35 @@ def list_emulator_experiments(root: Path = EMULATOR_EXPERIMENT_ROOT) -> list[Emu
     if not root.exists():
         return experiments
 
+    for physical_root in sorted(path for path in root.iterdir() if path.is_dir()):
+        emulator_root = physical_root / "emulator"
+        if not emulator_root.exists():
+            continue
+        for model_root in sorted(path for path in emulator_root.iterdir() if path.is_dir()):
+            experiments.extend(
+                _list_emulator_experiments_from_model_root(
+                    model_root,
+                    physical_experiment_name=physical_root.name,
+                )
+            )
+    return sorted(
+        experiments,
+        key=lambda experiment: (experiment.experiment_id, experiment.physical_experiment_name, experiment.emulator_name),
+        reverse=True,
+    )
+
+
+def _list_emulator_experiments_from_model_root(root: Path, *, physical_experiment_name: str) -> list[EmulatorExperimentRecord]:
+    experiments: list[EmulatorExperimentRecord] = []
+    if not root.exists():
+        return experiments
+
     for rollout_path in sorted(root.glob("*/rollout.nc"), reverse=True):
         metrics_path = rollout_path.parent / "metrics.json"
         experiments.append(
             EmulatorExperimentRecord(
+                physical_experiment_name=physical_experiment_name,
+                emulator_name=root.name,
                 experiment_id=rollout_path.parent.name,
                 rollout_path=rollout_path,
                 metrics_path=metrics_path if metrics_path.exists() else None,

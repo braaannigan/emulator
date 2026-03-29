@@ -123,7 +123,11 @@ def test_configure_app_sets_page_config_and_title():
 
 def test_render_double_gyre_page_shows_plots_and_metadata(monkeypatch):
     st = StreamlitStub(page="Double Gyre")
-    experiment = type("Experiment", (), {"experiment_id": "exp1", "netcdf_path": Path("demo.nc")})()
+    experiment = type(
+        "Experiment",
+        (),
+        {"physical_experiment_name": "double_gyre", "experiment_id": "exp1", "netcdf_path": Path("demo.nc")},
+    )()
     st.sidebar.selectbox_values = [experiment, 0]
 
     monkeypatch.setattr("src.pipelines.view_double_gyre.list_experiments", lambda: [experiment])
@@ -135,13 +139,18 @@ def test_render_double_gyre_page_shows_plots_and_metadata(monkeypatch):
 
     assert st.plotly_calls == ["layer_thickness", "zonal_velocity", "wind_stress"]
     assert st.subheaders == ["Experiment Metadata"]
+    assert st.json_payloads[0]["physical_experiment_name"] == "double_gyre"
     assert st.json_payloads[0]["experiment_id"] == "exp1"
     assert st.json_payloads[0]["model"] == "Aronnax"
 
 
 def test_render_double_gyre_page_stops_when_no_fields_selected(monkeypatch):
     st = StreamlitStub(page="Double Gyre")
-    experiment = type("Experiment", (), {"experiment_id": "exp1", "netcdf_path": Path("demo.nc")})()
+    experiment = type(
+        "Experiment",
+        (),
+        {"physical_experiment_name": "double_gyre", "experiment_id": "exp1", "netcdf_path": Path("demo.nc")},
+    )()
     st.sidebar.selectbox_values = [experiment, 0]
     st.sidebar.multiselect_value = []
 
@@ -161,7 +170,13 @@ def test_render_emulator_evaluation_page_shows_timeseries_and_metadata(monkeypat
     experiment = type(
         "Experiment",
         (),
-        {"experiment_id": "eval1", "rollout_path": Path("rollout.nc"), "metrics_path": Path("metrics.json")},
+        {
+            "physical_experiment_name": "double_gyre",
+            "emulator_name": "residual_thickness",
+            "experiment_id": "eval1",
+            "rollout_path": Path("rollout.nc"),
+            "metrics_path": Path("metrics.json"),
+        },
     )()
     st.sidebar.selectbox_values = [experiment]
 
@@ -178,6 +193,8 @@ def test_render_emulator_evaluation_page_shows_timeseries_and_metadata(monkeypat
 
     assert st.plotly_calls == ["timeseries", "Truth Layer Thickness", "Rollout Layer Thickness"]
     assert st.subheaders == ["Experiment Metadata"]
+    assert st.json_payloads[0]["physical_experiment_name"] == "double_gyre"
+    assert st.json_payloads[0]["emulator_name"] == "residual_thickness"
     assert st.json_payloads[0]["evaluation_experiment_id"] == "eval1"
     assert st.json_payloads[0]["epochs"] == 10
 

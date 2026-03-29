@@ -11,6 +11,7 @@ from src.generator.config import timestamp_experiment_id
 
 @dataclass(frozen=True)
 class CnnThicknessConfig:
+    source_data_root: Path
     source_experiment_id: str
     source_output_filename: str
     field_name: str
@@ -31,7 +32,7 @@ class CnnThicknessConfig:
     def with_overrides(self, **overrides: Any) -> "CnnThicknessConfig":
         normalized: dict[str, Any] = {}
         for key, value in overrides.items():
-            if key in {"raw_output_root", "interim_output_root"} and value is not None:
+            if key in {"source_data_root", "raw_output_root", "interim_output_root"} and value is not None:
                 normalized[key] = Path(value)
             else:
                 normalized[key] = value
@@ -43,7 +44,10 @@ class CnnThicknessConfig:
 
     @property
     def source_netcdf_path(self) -> Path:
-        return Path("data/raw/double_gyre") / self.source_experiment_id / self.source_output_filename
+        source_output_path = Path(self.source_output_filename)
+        if source_output_path.is_absolute():
+            return source_output_path
+        return self.source_data_root / self.source_experiment_id / source_output_path
 
     @property
     def resolved_experiment_id(self) -> str:
@@ -82,6 +86,7 @@ def load_cnn_thickness_config(path: str | Path) -> CnnThicknessConfig:
         raise ValueError("cnn_thickness.yaml must contain a top-level mapping.")
 
     return CnnThicknessConfig(
+        source_data_root=Path(payload.get("source_data_root", "data/raw/double_gyre/generator")),
         source_experiment_id=str(payload["source_experiment_id"]),
         source_output_filename=str(payload.get("source_output_filename", "double_gyre.nc")),
         field_name=str(payload.get("field_name", "layer_thickness")),
