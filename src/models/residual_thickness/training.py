@@ -370,15 +370,26 @@ def autoregressive_rollout_with_forcing(
     rollout_frames: list[np.ndarray] = []
 
     with torch.no_grad():
-        for index in range(eval_frames.shape[0] - 1):
+        index = 0
+        while index < eval_frames.shape[0] - 1:
             model_inputs = build_input_channels(
                 list(state_buffer),
                 None if forcing_features is None else forcing_features[index],
             )
             input_tensor = torch.from_numpy(model_inputs).unsqueeze(0).to(device)
             prediction = model(input_tensor).squeeze(0).cpu().numpy()
-            rollout_frames.append(standardizer.denormalize(prediction[None, ...])[0])
-            current = prediction.astype(np.float32)
-            state_buffer.appendleft(current.copy())
+            if prediction.ndim == 3:
+                prediction_steps = (prediction,)
+            elif prediction.ndim == 4:
+                prediction_steps = tuple(prediction[step_index] for step_index in range(prediction.shape[0]))
+            else:
+                raise ValueError(f"Unsupported prediction rank during rollout: {prediction.ndim}")
+            for step_prediction in prediction_steps:
+                if index >= eval_frames.shape[0] - 1:
+                    break
+                rollout_frames.append(standardizer.denormalize(step_prediction[None, ...])[0])
+                current = step_prediction.astype(np.float32)
+                state_buffer.appendleft(current.copy())
+                index += 1
 
     return np.stack(rollout_frames, axis=0)

@@ -26,8 +26,10 @@ class UnetThicknessConfig:
     kernel_size: int
     block_type: str
     stage_depth: int
+    dilation_cycle: int
     norm_type: str
     state_history: int
+    output_steps: int
     forcing_mode: str
     fusion_mode: str
     skip_fusion_mode: str
@@ -122,8 +124,10 @@ def load_unet_thickness_config(path: str | Path) -> UnetThicknessConfig:
         kernel_size=int(payload.get("kernel_size", 3)),
         block_type=str(payload.get("block_type", "standard")),
         stage_depth=int(payload.get("stage_depth", 1)),
+        dilation_cycle=int(payload.get("dilation_cycle", 1)),
         norm_type=str(payload.get("norm_type", "groupnorm")),
         state_history=int(payload.get("state_history", 1)),
+        output_steps=int(payload.get("output_steps", 1)),
         forcing_mode=str(payload.get("forcing_mode", "none")),
         fusion_mode=str(payload.get("fusion_mode", "input")),
         skip_fusion_mode=str(payload.get("skip_fusion_mode", "concat")),
