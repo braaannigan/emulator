@@ -25,9 +25,13 @@ class UnetThicknessConfig:
     num_levels: int
     kernel_size: int
     block_type: str
+    stage_depth: int
+    norm_type: str
     state_history: int
     forcing_mode: str
     fusion_mode: str
+    skip_fusion_mode: str
+    upsample_mode: str
     residual_connection: bool
     residual_step_scale: float
     curriculum_rollout_steps: tuple[int, ...]
@@ -117,9 +121,13 @@ def load_unet_thickness_config(path: str | Path) -> UnetThicknessConfig:
         num_levels=int(payload.get("num_levels", 2)),
         kernel_size=int(payload.get("kernel_size", 3)),
         block_type=str(payload.get("block_type", "standard")),
+        stage_depth=int(payload.get("stage_depth", 1)),
+        norm_type=str(payload.get("norm_type", "groupnorm")),
         state_history=int(payload.get("state_history", 1)),
         forcing_mode=str(payload.get("forcing_mode", "none")),
         fusion_mode=str(payload.get("fusion_mode", "input")),
+        skip_fusion_mode=str(payload.get("skip_fusion_mode", "concat")),
+        upsample_mode=str(payload.get("upsample_mode", "transpose")),
         residual_connection=bool(payload.get("residual_connection", True)),
         residual_step_scale=float(payload.get("residual_step_scale", 1.0)),
         curriculum_rollout_steps=tuple(int(value) for value in payload.get("curriculum_rollout_steps", [1])),

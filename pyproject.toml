@@ -21,6 +21,7 @@ dependencies = [
     "pyyaml>=6.0.2",
     "ray[tune]>=2.54.0",
     "scipy>=1.15.0",
+    "skydiscover>=0.1.0",
     "streamlit>=1.44.0",
     "torch>=2.7.0",
     "xarray>=2025.1.0",
@@ -33,7 +34,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["src", "src.animation", "src.generator", "src.models", "src.models.cnn_thickness", "src.models.residual_thickness", "src.models.unet_thickness", "src.pipelines", "src.viewer"]
+packages = ["src", "src.animation", "src.generator", "src.models", "src.models.cnn_thickness", "src.models.residual_thickness", "src.models.unet_thickness", "src.pipelines", "src.skydiscovery", "src.viewer"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]

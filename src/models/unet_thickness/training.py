@@ -98,6 +98,8 @@ def train_unet_model(
     frames_tensor = torch.from_numpy(normalized_train_frames.astype(np.float32)).to(device)
     forcing_tensor = None if forcing_features is None else torch.from_numpy(forcing_features.astype(np.float32)).to(device)
     curriculum = build_rollout_curriculum(config)
+    dataloader_generator = torch.Generator(device="cpu")
+    dataloader_generator.manual_seed(config.random_seed)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
     loss_fn = nn.MSELoss()
@@ -124,7 +126,12 @@ def train_unet_model(
         last_rollout_horizon = rollout_horizon
         scheduled_sampling_prob = config.scheduled_sampling_max_prob * float(epoch_index + 1) / float(max(config.epochs, 1))
         dataset = RolloutStartDataset(frames_tensor.shape[0], rollout_horizon)
-        dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
+        dataloader = DataLoader(
+            dataset,
+            batch_size=config.batch_size,
+            shuffle=True,
+            generator=dataloader_generator,
+        )
         epoch_loss_total = 0.0
         epoch_steps = 0
         for start_indices in dataloader:
