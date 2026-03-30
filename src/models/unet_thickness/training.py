@@ -85,6 +85,14 @@ def _laplacian_energy(values: torch.Tensor) -> torch.Tensor:
     return horizontal.square().mean() + vertical.square().mean()
 
 
+def _prediction_sequence(predictions: torch.Tensor) -> tuple[torch.Tensor, ...]:
+    if predictions.ndim == 4:
+        return (predictions,)
+    if predictions.ndim == 5:
+        return tuple(predictions[:, step_index] for step_index in range(predictions.shape[1]))
+    raise ValueError(f"Unsupported prediction rank: {predictions.ndim}")
+
+
 def train_unet_model(
     config: UnetThicknessConfig,
     model: torch.nn.Module,
@@ -106,6 +114,7 @@ def train_unet_model(
     final_loss = 0.0
     optimization_steps = 0
     last_rollout_horizon = 1
+    operator_output_steps = max(config.output_steps, 1)
     epoch_train_losses: list[float] = []
 
     def _write_training_history(status: str) -> None:
@@ -140,38 +149,38 @@ def train_unet_model(
 
             state_history_tensor = _assemble_state_history(frames_tensor, start_indices, config.state_history)
             total_loss = torch.tensor(0.0, device=device)
+            rollout_offset = 0
 
-            for rollout_step in range(rollout_horizon):
-                current_indices = start_indices + rollout_step
+            while rollout_offset < rollout_horizon:
+                current_indices = start_indices + rollout_offset
                 current_forcing = None if forcing_tensor is None else forcing_tensor.index_select(0, current_indices)
                 model_inputs = _assemble_model_inputs(
                     state_history_tensor,
                     current_forcing,
                 )
                 predictions = model(model_inputs)
-                targets = frames_tensor.index_select(0, current_indices + 1)
-                total_loss = total_loss + loss_fn(predictions, targets)
-                if config.high_frequency_loss_weight > 0.0:
-                    total_loss = total_loss + (config.high_frequency_loss_weight * _laplacian_energy(predictions))
-                if config.state_history > 1:
-                    next_state = predictions
+                prediction_steps = _prediction_sequence(predictions)
+                steps_to_apply = min(len(prediction_steps), rollout_horizon - rollout_offset, operator_output_steps)
+                for prediction_step in range(steps_to_apply):
+                    step_prediction = prediction_steps[prediction_step]
+                    targets = frames_tensor.index_select(0, current_indices + prediction_step + 1)
+                    total_loss = total_loss + loss_fn(step_prediction, targets)
+                    if config.high_frequency_loss_weight > 0.0:
+                        total_loss = total_loss + (config.high_frequency_loss_weight * _laplacian_energy(step_prediction))
+                    next_state = step_prediction
                     if scheduled_sampling_prob > 0.0:
                         teacher_mask = (
-                            torch.rand(predictions.shape[0], 1, 1, 1, device=device) < scheduled_sampling_prob
+                            torch.rand(step_prediction.shape[0], 1, 1, 1, device=device) < scheduled_sampling_prob
                         )
-                        next_state = torch.where(teacher_mask, targets, predictions)
-                    state_history_tensor = torch.cat(
-                        [next_state.unsqueeze(1), state_history_tensor[:, : config.state_history - 1]],
-                        dim=1,
-                    )
-                else:
-                    next_state = predictions
-                    if scheduled_sampling_prob > 0.0:
-                        teacher_mask = (
-                            torch.rand(predictions.shape[0], 1, 1, 1, device=device) < scheduled_sampling_prob
+                        next_state = torch.where(teacher_mask, targets, step_prediction)
+                    if config.state_history > 1:
+                        state_history_tensor = torch.cat(
+                            [next_state.unsqueeze(1), state_history_tensor[:, : config.state_history - 1]],
+                            dim=1,
                         )
-                        next_state = torch.where(teacher_mask, targets, predictions)
-                    state_history_tensor = next_state.unsqueeze(1)
+                    else:
+                        state_history_tensor = next_state.unsqueeze(1)
+                rollout_offset += steps_to_apply
 
             loss = total_loss / rollout_horizon
             loss.backward()

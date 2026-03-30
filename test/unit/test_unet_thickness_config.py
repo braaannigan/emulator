@@ -10,8 +10,10 @@ def test_load_unet_thickness_config_reads_architecture_fields():
     assert config.kernel_size == 3
     assert config.block_type == "standard"
     assert config.stage_depth == 1
+    assert config.dilation_cycle == 1
     assert config.norm_type == "groupnorm"
     assert config.state_history == 1
+    assert config.output_steps == 1
     assert config.forcing_mode == "none"
     assert config.fusion_mode == "input"
     assert config.skip_fusion_mode == "concat"

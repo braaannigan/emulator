@@ -13,14 +13,14 @@ def _build_norm(norm_type: str, channels: int) -> nn.Module:
 
 
 class ConvBlock(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, norm_type: str):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, norm_type: str, dilation: int):
         super().__init__()
-        padding = kernel_size // 2
+        padding = (kernel_size // 2) * dilation
         self.block = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding),
+            nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, dilation=dilation),
             _build_norm(norm_type, out_channels),
             nn.GELU(),
-            nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, padding=padding),
+            nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, padding=padding, dilation=dilation),
             _build_norm(norm_type, out_channels),
             nn.GELU(),
         )
@@ -30,11 +30,18 @@ class ConvBlock(nn.Module):
 
 
 class ConvNeXtBlock(nn.Module):
-    def __init__(self, channels: int, kernel_size: int, norm_type: str):
+    def __init__(self, channels: int, kernel_size: int, norm_type: str, dilation: int):
         super().__init__()
-        padding = kernel_size // 2
+        padding = (kernel_size // 2) * dilation
         expanded_channels = channels * 4
-        self.depthwise = nn.Conv2d(channels, channels, kernel_size=kernel_size, padding=padding, groups=channels)
+        self.depthwise = nn.Conv2d(
+            channels,
+            channels,
+            kernel_size=kernel_size,
+            padding=padding,
+            groups=channels,
+            dilation=dilation,
+        )
         self.norm = _build_norm(norm_type, channels)
         self.pointwise = nn.Sequential(
             nn.Conv2d(channels, expanded_channels, kernel_size=1),
@@ -56,17 +63,17 @@ class FlexibleBlock(nn.Module):
         out_channels: int,
         kernel_size: int,
         block_type: str,
-        stage_depth: int,
+        dilations: tuple[int, ...],
         norm_type: str,
     ):
         super().__init__()
         self.projection = nn.Conv2d(in_channels, out_channels, kernel_size=1) if in_channels != out_channels else nn.Identity()
         repeated_blocks: list[nn.Module] = []
-        for _ in range(max(stage_depth, 1)):
+        for dilation in dilations:
             if block_type == "standard":
-                repeated_blocks.append(ConvBlock(out_channels, out_channels, kernel_size, norm_type))
+                repeated_blocks.append(ConvBlock(out_channels, out_channels, kernel_size, norm_type, dilation))
             elif block_type == "convnext":
-                repeated_blocks.append(ConvNeXtBlock(out_channels, kernel_size, norm_type))
+                repeated_blocks.append(ConvNeXtBlock(out_channels, kernel_size, norm_type, dilation))
             else:
                 raise ValueError(f"Unsupported block_type: {block_type}")
         self.block = nn.Sequential(*repeated_blocks)
@@ -100,8 +107,10 @@ class UnetThicknessModel(nn.Module):
         num_levels: int = 2,
         kernel_size: int = 3,
         stage_depth: int = 1,
+        dilation_cycle: int = 1,
         norm_type: str = "groupnorm",
         state_channels: int = 1,
+        output_steps: int = 1,
         forcing_channels: int = 0,
         fusion_mode: str = "input",
         skip_fusion_mode: str = "concat",
@@ -115,11 +124,23 @@ class UnetThicknessModel(nn.Module):
         self.state_channels = state_channels
         self.prognostic_channels = prognostic_channels
         self.forcing_channels = forcing_channels
+        self.output_steps = max(output_steps, 1)
         self.fusion_mode = fusion_mode
         self.skip_fusion_mode = skip_fusion_mode
         self.residual_connection = residual_connection
         self.residual_step_scale = residual_step_scale
         levels = max(num_levels, 1)
+        dilation_cycle = max(dilation_cycle, 1)
+
+        block_counter = 0
+
+        def next_dilations() -> tuple[int, ...]:
+            nonlocal block_counter
+            stage_dilations: list[int] = []
+            for _ in range(max(stage_depth, 1)):
+                stage_dilations.append(2 ** (block_counter % dilation_cycle))
+                block_counter += 1
+            return tuple(stage_dilations)
 
         encoder_channels = [hidden_channels * (2**level) for level in range(levels)]
         self.encoders = nn.ModuleList()
@@ -128,13 +149,13 @@ class UnetThicknessModel(nn.Module):
         encoder_input_channels = input_channels if fusion_mode == "input" else state_channels
         in_channels = encoder_input_channels
         for out_channels in encoder_channels:
-            self.encoders.append(FlexibleBlock(in_channels, out_channels, kernel_size, block_type, stage_depth, norm_type))
+            self.encoders.append(FlexibleBlock(in_channels, out_channels, kernel_size, block_type, next_dilations(), norm_type))
             self.pools.append(nn.MaxPool2d(kernel_size=2, stride=2))
             in_channels = out_channels
 
         bottleneck_channels = encoder_channels[-1] * 2
         self.bottleneck = FlexibleBlock(
-            encoder_channels[-1], bottleneck_channels, kernel_size, block_type, stage_depth, norm_type
+            encoder_channels[-1], bottleneck_channels, kernel_size, block_type, next_dilations(), norm_type
         )
         self.forcing_encoder = None
         self.forcing_scale_blocks = None
@@ -146,12 +167,12 @@ class UnetThicknessModel(nn.Module):
             current_channels = forcing_channels
             for out_channels in encoder_channels:
                 self.forcing_scale_blocks.append(
-                    FlexibleBlock(current_channels, out_channels, kernel_size, block_type, stage_depth, norm_type)
+                    FlexibleBlock(current_channels, out_channels, kernel_size, block_type, next_dilations(), norm_type)
                 )
                 self.forcing_scale_pools.append(nn.AvgPool2d(kernel_size=2, stride=2))
                 current_channels = out_channels
             self.forcing_bottleneck = FlexibleBlock(
-                encoder_channels[-1], bottleneck_channels, kernel_size, block_type, stage_depth, norm_type
+                encoder_channels[-1], bottleneck_channels, kernel_size, block_type, next_dilations(), norm_type
             )
 
         self.upconvs = nn.ModuleList()
@@ -176,11 +197,11 @@ class UnetThicknessModel(nn.Module):
             else:
                 raise ValueError(f"Unsupported skip_fusion_mode: {skip_fusion_mode}")
             self.decoders.append(
-                FlexibleBlock(decoder_in_channels, skip_channels, kernel_size, block_type, stage_depth, norm_type)
+                FlexibleBlock(decoder_in_channels, skip_channels, kernel_size, block_type, next_dilations(), norm_type)
             )
             current_channels = skip_channels
 
-        self.output_projection = nn.Conv2d(current_channels, prognostic_channels, kernel_size=1)
+        self.output_projection = nn.Conv2d(current_channels, prognostic_channels * self.output_steps, kernel_size=1)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         state_inputs = inputs[:, : self.state_channels]
@@ -224,6 +245,16 @@ class UnetThicknessModel(nn.Module):
             hidden = decoder(hidden)
 
         outputs = self.output_projection(hidden)
+        outputs = outputs.view(
+            outputs.shape[0],
+            self.output_steps,
+            self.prognostic_channels,
+            outputs.shape[-2],
+            outputs.shape[-1],
+        )
         if self.residual_connection:
-            return state_inputs[:, : self.prognostic_channels] + (self.residual_step_scale * outputs)
+            residual_base = state_inputs[:, : self.prognostic_channels].unsqueeze(1)
+            outputs = residual_base + (self.residual_step_scale * outputs)
+        if self.output_steps == 1:
+            return outputs[:, 0]
         return outputs

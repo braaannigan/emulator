@@ -86,3 +86,38 @@ def test_train_unet_model_supports_stabilization_options(tmp_path: Path):
     assert train_info["curriculum_final_rollout_horizon"] == 2
     history = json.loads(config.training_history_path.read_text(encoding="utf-8"))
     assert history["status"] == "completed"
+
+
+def test_train_unet_model_supports_multistep_operator(tmp_path: Path):
+    config = load_unet_thickness_config("config/emulator/unet_thickness.yaml").with_overrides(
+        interim_output_root=tmp_path / "interim",
+        raw_output_root=tmp_path / "raw",
+        experiment_id="unit-unet-multistep",
+        epochs=1,
+        batch_size=1,
+        state_history=2,
+        output_steps=2,
+        curriculum_rollout_steps=(4,),
+        curriculum_transition_epochs=(0,),
+    )
+    model = UnetThicknessModel(
+        input_channels=2,
+        hidden_channels=4,
+        num_levels=1,
+        kernel_size=3,
+        stage_depth=1,
+        dilation_cycle=2,
+        state_channels=2,
+        output_steps=2,
+        forcing_channels=0,
+        fusion_mode="input",
+        residual_connection=False,
+        prognostic_channels=1,
+    )
+    frames = np.arange(6 * 1 * 4 * 4, dtype=np.float32).reshape(6, 1, 4, 4)
+
+    train_info = train_unet_model(config, model, frames, None)
+
+    assert train_info["curriculum_final_rollout_horizon"] == 4
+    history = json.loads(config.training_history_path.read_text(encoding="utf-8"))
+    assert history["status"] == "completed"
