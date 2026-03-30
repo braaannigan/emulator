@@ -8,7 +8,9 @@ import numpy as np
 import xarray as xr
 
 
-def create_rollout_comparison_animation(rollout_path: Path, output_path: Path, fps: int) -> Path:
+def create_rollout_comparison_animation(
+    rollout_path: Path, output_path: Path, fps: int
+) -> Path:
     dataset = xr.open_dataset(rollout_path)
     try:
         truth = np.asarray(dataset["truth_layer_thickness"].values)
@@ -49,8 +51,10 @@ def _render_frame(
     vmax: float,
 ) -> np.ndarray:
     figure, axes = plt.subplots(1, 2, figsize=(12, 5.04), constrained_layout=True)
-    for axis, values, title in zip(axes, [truth, rollout], ["Truth", "Rollout"]):
-        mesh = axis.pcolormesh(x, y, values, cmap="RdBu_r", shading="auto", vmin=vmin, vmax=vmax)
+    for axis, values, title in zip(axes, [truth, rollout], ["Aronnax", "AIronnax"]):
+        mesh = axis.pcolormesh(
+            x, y, values, cmap="RdBu_r", shading="auto", vmin=vmin, vmax=vmax
+        )
         axis.set_title(title)
         axis.set_xlabel("x")
         axis.set_ylabel("y")
