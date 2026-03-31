@@ -2,8 +2,8 @@ from __future__ import annotations
 
 # EVOLVE-BLOCK-START
 CONFIG_OVERRIDES = {
-    "learning_rate": 3.0e-4,
-    "weight_decay": 1.0e-4,
+    "learning_rate": 3.8e-4,
+    "weight_decay": 1.8e-5,
     "hidden_channels": 24,
     "num_levels": 4,
     "kernel_size": 5,

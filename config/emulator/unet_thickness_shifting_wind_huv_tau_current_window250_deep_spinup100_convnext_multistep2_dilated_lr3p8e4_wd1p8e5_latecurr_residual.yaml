@@ -1,0 +1,37 @@
+source_data_root: data/raw/double_gyre_shifting_wind/generator
+source_experiment_id: 20260323T123500-period300d-duration5000d-shift160km
+source_output_filename: double_gyre.nc
+field_name: layer_thickness
+state_fields:
+  - layer_thickness
+  - zonal_velocity_centered
+  - meridional_velocity_centered
+train_fraction: 0.8
+batch_size: 2
+epochs: 20
+learning_rate: 3.8e-4
+weight_decay: 1.8e-5
+hidden_channels: 24
+num_levels: 4
+kernel_size: 5
+block_type: convnext
+stage_depth: 2
+dilation_cycle: 4
+state_history: 2
+output_steps: 2
+forcing_mode: wind_current
+fusion_mode: input
+residual_connection: true
+curriculum_rollout_steps:
+  - 2
+  - 4
+curriculum_transition_epochs:
+  - 0
+  - 15
+scheduled_sampling_max_prob: 0.0
+train_start_day: 100
+eval_window_days: 250
+random_seed: 7
+animation_fps: 4
+raw_output_root: data/raw/double_gyre_shifting_wind/emulator/unet_thickness
+interim_output_root: data/interim/emulator/unet_thickness
