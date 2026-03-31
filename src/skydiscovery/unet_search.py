@@ -26,17 +26,10 @@ ALLOWED_OVERRIDE_KEYS = {
     "block_type",
     "stage_depth",
     "norm_type",
-    "batch_size",
-    "train_start_day",
-    "forcing_mode",
-    "fusion_mode",
     "skip_fusion_mode",
     "upsample_mode",
-    "residual_connection",
 }
 
-ALLOWED_FORCING_MODES = {"wind_current", "wind_delta", "wind_current_plus_delta"}
-ALLOWED_FUSION_MODES = {"input", "bottleneck", "per_scale"}
 ALLOWED_BLOCK_TYPES = {"standard", "convnext"}
 ALLOWED_NORM_TYPES = {"none", "groupnorm"}
 ALLOWED_SKIP_FUSION_MODES = {"concat", "add", "gated"}
@@ -128,26 +121,6 @@ def validate_candidate_overrides(overrides: dict[str, Any]) -> dict[str, Any]:
         if value not in ALLOWED_NORM_TYPES:
             raise ValueError("norm_type out of allowed range")
         validated["norm_type"] = value
-    if "batch_size" in validated:
-        value = int(validated["batch_size"])
-        if value not in {1, 2, 4}:
-            raise ValueError("batch_size out of allowed range")
-        validated["batch_size"] = value
-    if "train_start_day" in validated:
-        value = float(validated["train_start_day"])
-        if not 0.0 <= value <= 500.0:
-            raise ValueError("train_start_day out of allowed range")
-        validated["train_start_day"] = value
-    if "forcing_mode" in validated:
-        value = str(validated["forcing_mode"])
-        if value not in ALLOWED_FORCING_MODES:
-            raise ValueError("forcing_mode out of allowed range")
-        validated["forcing_mode"] = value
-    if "fusion_mode" in validated:
-        value = str(validated["fusion_mode"])
-        if value not in ALLOWED_FUSION_MODES:
-            raise ValueError("fusion_mode out of allowed range")
-        validated["fusion_mode"] = value
     if "skip_fusion_mode" in validated:
         value = str(validated["skip_fusion_mode"])
         if value not in ALLOWED_SKIP_FUSION_MODES:
@@ -158,9 +131,6 @@ def validate_candidate_overrides(overrides: dict[str, Any]) -> dict[str, Any]:
         if value not in ALLOWED_UPSAMPLE_MODES:
             raise ValueError("upsample_mode out of allowed range")
         validated["upsample_mode"] = value
-    if "residual_connection" in validated:
-        validated["residual_connection"] = bool(validated["residual_connection"])
-
     return validated
 
 

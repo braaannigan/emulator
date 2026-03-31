@@ -38,19 +38,12 @@ def test_validate_candidate_overrides_normalizes_values():
             "block_type": "convnext",
             "stage_depth": 2,
             "norm_type": "groupnorm",
-            "batch_size": 2,
-            "train_start_day": 100,
-            "forcing_mode": "wind_current",
-            "fusion_mode": "per_scale",
             "skip_fusion_mode": "gated",
             "upsample_mode": "bilinear",
-            "residual_connection": 0,
         }
     )
 
     assert set(overrides) <= ALLOWED_OVERRIDE_KEYS
-    assert overrides["residual_connection"] is False
-    assert overrides["train_start_day"] == 100.0
     assert overrides["stage_depth"] == 2
 
 
@@ -70,7 +63,7 @@ def test_configure_openrouter_maps_named_key(monkeypatch, tmp_path: Path):
 def test_evaluate_unet_candidate_runs_pipeline(monkeypatch, tmp_path: Path):
     candidate_path = tmp_path / "candidate.py"
     candidate_path.write_text(
-        "CONFIG_OVERRIDES = {'hidden_channels': 24, 'forcing_mode': 'wind_current', 'block_type': 'convnext'}\n",
+        "CONFIG_OVERRIDES = {'hidden_channels': 24, 'block_type': 'convnext'}\n",
         encoding="utf-8",
     )
 

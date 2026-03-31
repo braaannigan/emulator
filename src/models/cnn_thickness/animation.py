@@ -51,7 +51,7 @@ def _render_frame(
     vmax: float,
 ) -> np.ndarray:
     figure, axes = plt.subplots(1, 2, figsize=(12, 5.04), constrained_layout=True)
-    for axis, values, title in zip(axes, [truth, rollout], ["Aronnax", "AIronnax"]):
+    for axis, values, title in zip(axes, [truth, rollout], ["ARONNAX", "AIRONNAX"]):
         mesh = axis.pcolormesh(
             x, y, values, cmap="RdBu_r", shading="auto", vmin=vmin, vmax=vmax
         )
