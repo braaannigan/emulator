@@ -8,8 +8,9 @@ import plotly.graph_objects as go
 import streamlit as st
 
 
-INTERIM_EMULATOR_ROOT = Path("data/interim/emulator")
-RAW_EMULATOR_ROOT = Path("data/raw")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+INTERIM_EMULATOR_ROOT = REPO_ROOT / "data/interim/emulator"
+RAW_EMULATOR_ROOT = REPO_ROOT / "data/raw"
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,7 @@ class TrainingMetricsRecord:
     experiment_id: str
     training_history_path: Path | None
     metrics_path: Path | None
+    updated_at: float
 
 
 def list_training_metric_runs(interim_root: Path = INTERIM_EMULATOR_ROOT, raw_root: Path = RAW_EMULATOR_ROOT) -> list[TrainingMetricsRecord]:
@@ -31,15 +33,21 @@ def list_training_metric_runs(interim_root: Path = INTERIM_EMULATOR_ROOT, raw_ro
             metrics_matches = sorted(raw_root.glob(f"*/emulator/{model_root.name}/{experiment_root.name}/metrics.json"))
             metrics_path = metrics_matches[0] if metrics_matches else None
             if history_path.exists() or metrics_path is not None:
+                updated_at = max(
+                    path.stat().st_mtime
+                    for path in (history_path, metrics_path)
+                    if path is not None and path.exists()
+                )
                 runs.append(
                     TrainingMetricsRecord(
                         emulator_name=model_root.name,
                         experiment_id=experiment_root.name,
                         training_history_path=history_path if history_path.exists() else None,
                         metrics_path=metrics_path,
+                        updated_at=updated_at,
                     )
                 )
-    return sorted(runs, key=lambda run: (run.experiment_id, run.emulator_name), reverse=True)
+    return sorted(runs, key=lambda run: (run.updated_at, run.experiment_id, run.emulator_name), reverse=True)
 
 
 def load_training_history(record: TrainingMetricsRecord) -> dict[str, object]:
@@ -127,6 +135,7 @@ def render_training_metrics_page(st_module=st) -> None:
             if selected_run.training_history_path is None
             else str(selected_run.training_history_path),
             "metrics_path": None if selected_run.metrics_path is None else str(selected_run.metrics_path),
+            "updated_at": selected_run.updated_at,
             **history,
         }
     )
