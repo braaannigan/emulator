@@ -12,6 +12,7 @@ from src.models.residual_thickness.training import (
     autoregressive_rollout_with_forcing,
     build_forcing_features,
     build_training_inputs,
+    field_channel_indices,
     fit_channel_standardizer,
     fit_forcing_standardizer,
     forcing_channel_count,
@@ -38,6 +39,16 @@ def _trim_initial_spinup(
     return frames[first_index:], time_days[first_index:]
 
 
+def _first_visualization_channel(
+    netcdf_path: str,
+    state_fields: tuple[str, ...],
+    requested_field: str,
+) -> int | None:
+    if requested_field not in state_fields:
+        return None
+    return field_channel_indices(netcdf_path, state_fields, requested_field)[0]
+
+
 def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str, str | float | int]:
     if not isinstance(config, UnetThicknessConfig):
         config = load_unet_thickness_config(config)
@@ -56,9 +67,10 @@ def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str
     normalized_forcing_features = (
         None if forcing_standardizer is None or forcing_features is None else forcing_standardizer.normalize(forcing_features)
     )
+    prognostic_channels = int(split.train_frames.shape[1])
 
     model = UnetThicknessModel(
-        input_channels=(len(config.state_fields) * config.state_history) + forcing_channel_count(config.forcing_mode),
+        input_channels=(prognostic_channels * config.state_history) + forcing_channel_count(config.forcing_mode),
         hidden_channels=config.hidden_channels,
         num_levels=config.num_levels,
         kernel_size=config.kernel_size,
@@ -66,7 +78,7 @@ def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str
         dilation_cycle=config.dilation_cycle,
         norm_type=config.norm_type,
         block_type=config.block_type,
-        state_channels=len(config.state_fields) * config.state_history,
+        state_channels=prognostic_channels * config.state_history,
         output_steps=config.output_steps,
         forcing_channels=forcing_channel_count(config.forcing_mode),
         fusion_mode=config.fusion_mode,
@@ -74,7 +86,7 @@ def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str
         upsample_mode=config.upsample_mode,
         residual_connection=config.residual_connection,
         residual_step_scale=config.residual_step_scale,
-        prognostic_channels=len(config.state_fields),
+        prognostic_channels=prognostic_channels,
     )
     train_info = train_unet_model(
         config,
@@ -93,9 +105,9 @@ def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str
         standardizer,
         device,
     )
-    field_index = config.state_fields.index(config.field_name)
-    truth = split.eval_frames[1:, field_index]
-    rollout_field = rollout[:, field_index]
+    field_indices = field_channel_indices(str(config.source_netcdf_path), config.state_fields, config.field_name)
+    truth = split.eval_frames[1:, field_indices]
+    rollout_field = rollout[:, field_indices]
     eval_time_days = split.eval_time_days[1:]
     if config.eval_window_days is not None:
         window_limit = float(eval_time_days[0] + config.eval_window_days)
@@ -121,7 +133,47 @@ def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str
         },
         config.checkpoint_path,
     )
-    save_rollout_dataset(config.rollout_path, truth=truth, rollout=rollout_field, time_days=eval_time_days, y=y, x=x)
+    truth_animation = truth[:, 0] if truth.ndim == 4 else truth
+    rollout_animation = rollout_field[:, 0] if rollout_field.ndim == 4 else rollout_field
+    truth_zonal_velocity = None
+    rollout_zonal_velocity = None
+    zonal_velocity_index = _first_visualization_channel(
+        str(config.source_netcdf_path),
+        config.state_fields,
+        "zonal_velocity_centered",
+    )
+    if zonal_velocity_index is not None:
+        truth_zonal_velocity = split.eval_frames[1:, zonal_velocity_index]
+        rollout_zonal_velocity = rollout[:, zonal_velocity_index]
+        if config.eval_window_days is not None:
+            truth_zonal_velocity = truth_zonal_velocity[eval_mask]
+            rollout_zonal_velocity = rollout_zonal_velocity[eval_mask]
+
+    truth_meridional_velocity = None
+    rollout_meridional_velocity = None
+    meridional_velocity_index = _first_visualization_channel(
+        str(config.source_netcdf_path),
+        config.state_fields,
+        "meridional_velocity_centered",
+    )
+    if meridional_velocity_index is not None:
+        truth_meridional_velocity = split.eval_frames[1:, meridional_velocity_index]
+        rollout_meridional_velocity = rollout[:, meridional_velocity_index]
+        if config.eval_window_days is not None:
+            truth_meridional_velocity = truth_meridional_velocity[eval_mask]
+            rollout_meridional_velocity = rollout_meridional_velocity[eval_mask]
+    save_rollout_dataset(
+        config.rollout_path,
+        truth=truth_animation,
+        rollout=rollout_animation,
+        time_days=eval_time_days,
+        y=y,
+        x=x,
+        truth_zonal_velocity=truth_zonal_velocity,
+        rollout_zonal_velocity=rollout_zonal_velocity,
+        truth_meridional_velocity=truth_meridional_velocity,
+        rollout_meridional_velocity=rollout_meridional_velocity,
+    )
     if config.animation_fps > 0:
         create_rollout_comparison_animation(config.rollout_path, config.animation_path, fps=config.animation_fps)
 
@@ -139,6 +191,7 @@ def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str
         "state_history": config.state_history,
         "output_steps": config.output_steps,
         "state_fields": list(config.state_fields),
+        "evaluated_field_channel_count": len(field_indices),
         "forcing_mode": config.forcing_mode,
         "fusion_mode": config.fusion_mode,
         "skip_fusion_mode": config.skip_fusion_mode,

@@ -31,6 +31,32 @@ def test_save_rollout_dataset_writes_truth_and_rollout(tmp_path: Path):
     try:
         assert "truth_layer_thickness" in dataset
         assert "rollout_layer_thickness" in dataset
+        assert "truth_zonal_velocity" not in dataset
+    finally:
+        dataset.close()
+
+
+def test_save_rollout_dataset_writes_optional_velocity_fields(tmp_path: Path):
+    output_path = tmp_path / "rollout.nc"
+    save_rollout_dataset(
+        output_path,
+        truth=np.ones((2, 2, 2), dtype=np.float32),
+        rollout=np.zeros((2, 2, 2), dtype=np.float32),
+        time_days=np.array([1.0, 2.0], dtype=np.float32),
+        y=np.array([0.0, 1.0], dtype=np.float32),
+        x=np.array([0.0, 1.0], dtype=np.float32),
+        truth_zonal_velocity=np.full((2, 2, 2), 2.0, dtype=np.float32),
+        rollout_zonal_velocity=np.full((2, 2, 2), -2.0, dtype=np.float32),
+        truth_meridional_velocity=np.full((2, 2, 2), 3.0, dtype=np.float32),
+        rollout_meridional_velocity=np.full((2, 2, 2), -3.0, dtype=np.float32),
+    )
+
+    dataset = xr.open_dataset(output_path)
+    try:
+        assert "truth_zonal_velocity" in dataset
+        assert "rollout_zonal_velocity" in dataset
+        assert "truth_meridional_velocity" in dataset
+        assert "rollout_meridional_velocity" in dataset
     finally:
         dataset.close()
 

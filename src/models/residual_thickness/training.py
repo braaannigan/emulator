@@ -202,33 +202,68 @@ def load_state_fields(
         channels: list[np.ndarray] = []
         for field_name in state_fields:
             if field_name == "layer_thickness":
-                values = np.asarray(dataset["layer_thickness"].sel(layers=0).values, dtype=np.float32)
+                values = np.asarray(dataset["layer_thickness"].values, dtype=np.float32)
             elif field_name == "zonal_velocity_centered":
                 if cached_centered_u is None:
-                    raw_u = np.asarray(dataset["zonal_velocity"].sel(layers=0).values, dtype=np.float32)
+                    raw_u = np.asarray(dataset["zonal_velocity"].values, dtype=np.float32)
                     cached_centered_u = center_zonal_velocity(raw_u)
                 values = cached_centered_u
             elif field_name == "meridional_velocity_centered":
                 if cached_centered_v is None:
-                    raw_v = np.asarray(dataset["meridional_velocity"].sel(layers=0).values, dtype=np.float32)
+                    raw_v = np.asarray(dataset["meridional_velocity"].values, dtype=np.float32)
                     cached_centered_v = center_meridional_velocity(raw_v)
                 values = cached_centered_v
             elif field_name == "relative_vorticity":
                 if cached_centered_u is None:
-                    raw_u = np.asarray(dataset["zonal_velocity"].sel(layers=0).values, dtype=np.float32)
+                    raw_u = np.asarray(dataset["zonal_velocity"].values, dtype=np.float32)
                     cached_centered_u = center_zonal_velocity(raw_u)
                 if cached_centered_v is None:
-                    raw_v = np.asarray(dataset["meridional_velocity"].sel(layers=0).values, dtype=np.float32)
+                    raw_v = np.asarray(dataset["meridional_velocity"].values, dtype=np.float32)
                     cached_centered_v = center_meridional_velocity(raw_v)
                 values = compute_relative_vorticity(cached_centered_u, cached_centered_v, y, x)
             else:
                 raise ValueError(f"Unsupported state field: {field_name}")
-            channels.append(values.astype(np.float32))
+            values = values.astype(np.float32)
+            if values.ndim == 4:
+                channels.extend([values[:, layer_index] for layer_index in range(values.shape[1])])
+            else:
+                channels.append(values)
     finally:
         dataset.close()
 
     frames = np.stack(channels, axis=1)
     return frames, time_days, y, x
+
+
+def field_channel_indices(
+    netcdf_path: str,
+    state_fields: tuple[str, ...],
+    field_name: str,
+) -> tuple[int, ...]:
+    dataset = xr.open_dataset(netcdf_path)
+    try:
+        if "layers" in dataset.coords:
+            layer_count = int(dataset.sizes["layers"])
+        else:
+            layer_count = 1
+    finally:
+        dataset.close()
+
+    indices: list[int] = []
+    channel_offset = 0
+    for current_field in state_fields:
+        channels_for_field = layer_count if current_field in {
+            "layer_thickness",
+            "zonal_velocity_centered",
+            "meridional_velocity_centered",
+            "relative_vorticity",
+        } else 1
+        if current_field == field_name:
+            indices.extend(range(channel_offset, channel_offset + channels_for_field))
+        channel_offset += channels_for_field
+    if not indices:
+        raise ValueError(f"field_name {field_name!r} is not present in state_fields={state_fields!r}")
+    return tuple(indices)
 
 
 def _history_frame(frames: np.ndarray, index: int, offset: int) -> np.ndarray:
