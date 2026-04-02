@@ -12,7 +12,8 @@ def mean_squared_error(truth: np.ndarray, rollout: np.ndarray) -> float:
 
 
 def mse_per_timestep(truth: np.ndarray, rollout: np.ndarray) -> np.ndarray:
-    return np.mean((truth - rollout) ** 2, axis=(1, 2))
+    axes = tuple(range(1, truth.ndim))
+    return np.mean((truth - rollout) ** 2, axis=axes)
 
 
 def save_rollout_dataset(
@@ -22,13 +23,24 @@ def save_rollout_dataset(
     time_days: np.ndarray,
     y: np.ndarray,
     x: np.ndarray,
+    truth_zonal_velocity: np.ndarray | None = None,
+    rollout_zonal_velocity: np.ndarray | None = None,
+    truth_meridional_velocity: np.ndarray | None = None,
+    rollout_meridional_velocity: np.ndarray | None = None,
 ) -> Path:
     rollout_path.parent.mkdir(parents=True, exist_ok=True)
+    data_vars: dict[str, tuple[tuple[str, ...], np.ndarray]] = {
+        "truth_layer_thickness": (("time_days", "y", "x"), truth),
+        "rollout_layer_thickness": (("time_days", "y", "x"), rollout),
+    }
+    if truth_zonal_velocity is not None and rollout_zonal_velocity is not None:
+        data_vars["truth_zonal_velocity"] = (("time_days", "y", "x"), truth_zonal_velocity)
+        data_vars["rollout_zonal_velocity"] = (("time_days", "y", "x"), rollout_zonal_velocity)
+    if truth_meridional_velocity is not None and rollout_meridional_velocity is not None:
+        data_vars["truth_meridional_velocity"] = (("time_days", "y", "x"), truth_meridional_velocity)
+        data_vars["rollout_meridional_velocity"] = (("time_days", "y", "x"), rollout_meridional_velocity)
     dataset = xr.Dataset(
-        data_vars={
-            "truth_layer_thickness": (("time_days", "y", "x"), truth),
-            "rollout_layer_thickness": (("time_days", "y", "x"), rollout),
-        },
+        data_vars=data_vars,
         coords={"time_days": time_days, "y": y, "x": x},
     )
     dataset.to_netcdf(rollout_path)

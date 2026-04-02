@@ -7,6 +7,10 @@ from pathlib import Path
 from .config import DoubleGyreConfig
 
 
+def _layer_vector(value: float, layers: int) -> str:
+    return ",".join([str(value)] * max(layers, 1))
+
+
 def write_aronnax_configuration(config: DoubleGyreConfig, destination: Path) -> Path:
     parser = configparser.RawConfigParser()
     parser.optionxform = str
@@ -30,7 +34,7 @@ def write_aronnax_configuration(config: DoubleGyreConfig, destination: Path) -> 
         "debug_level": str(config.debug_level),
     }
     parser["model"] = {
-        "hmean": str(config.mean_layer_thickness_m),
+        "hmean": _layer_vector(config.mean_layer_thickness_m, config.layers),
         "h0": str(config.resting_depth_m),
         "red_grav": "yes",
     }
@@ -39,7 +43,7 @@ def write_aronnax_configuration(config: DoubleGyreConfig, destination: Path) -> 
         "n_proc_y": str(config.n_proc_y),
     }
     parser["physics"] = {
-        "g_vec": str(config.reduced_gravity),
+        "g_vec": _layer_vector(config.reduced_gravity, config.layers),
         "rho0": str(config.density),
     }
     parser["grid"] = {
@@ -53,7 +57,7 @@ def write_aronnax_configuration(config: DoubleGyreConfig, destination: Path) -> 
         "wet_mask_file": ":rectangular_pool:",
     }
     parser["initial_conditions"] = {
-        "init_h_file": f":tracer_point_variable:{config.mean_layer_thickness_m}",
+        "init_h_file": f":tracer_point_variable:{_layer_vector(config.mean_layer_thickness_m, config.layers)}",
     }
     parser["external_forcing"] = {
         "dump_wind": "no",
