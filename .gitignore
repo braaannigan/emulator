@@ -3,3 +3,8 @@
 .coverage
 emulator.egg-info/
 data/
+outputs/
+.env
+.venv/
+.pytest_cache/
+.streamlit/
