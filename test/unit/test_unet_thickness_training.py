@@ -6,7 +6,7 @@ import torch
 
 from src.models.unet_thickness.config import load_unet_thickness_config
 from src.models.unet_thickness.model import UnetThicknessModel
-from src.models.unet_thickness.training import build_rollout_curriculum, train_unet_model
+from src.models.unet_thickness.training import _assemble_model_inputs, build_rollout_curriculum, train_unet_model
 
 
 def test_build_rollout_curriculum_selects_horizon_by_epoch():
@@ -21,6 +21,24 @@ def test_build_rollout_curriculum_selects_horizon_by_epoch():
     assert curriculum.horizon_for_epoch(9) == 1
     assert curriculum.horizon_for_epoch(10) == 2
     assert curriculum.horizon_for_epoch(25) == 4
+
+
+def test_assemble_model_inputs_flattens_history_then_appends_forcing():
+    state_history_tensor = torch.tensor(
+        [
+            [
+                [[[1.0]], [[2.0]]],
+                [[[3.0]], [[4.0]]],
+            ]
+        ],
+        dtype=torch.float32,
+    )
+    forcing_tensor = torch.tensor([[[[5.0]], [[6.0]]]], dtype=torch.float32)
+
+    assembled = _assemble_model_inputs(state_history_tensor, forcing_tensor)
+
+    assert assembled.shape == (1, 6, 1, 1)
+    assert assembled[:, :, 0, 0].tolist() == [[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]]
 
 
 def test_train_unet_model_writes_training_history(tmp_path: Path):

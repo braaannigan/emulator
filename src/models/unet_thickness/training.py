@@ -66,18 +66,25 @@ def _assemble_model_inputs(
     state_history_tensor: torch.Tensor,
     current_forcing_features: torch.Tensor | None,
 ) -> torch.Tensor:
-    inputs: list[np.ndarray] = []
-    state_history_np = state_history_tensor.detach().cpu().numpy()
-    current_forcing_np = None if current_forcing_features is None else current_forcing_features.detach().cpu().numpy()
-    for batch_index in range(state_history_np.shape[0]):
-        state_frames = [state_history_np[batch_index, index] for index in range(state_history_np.shape[1])]
-        inputs.append(
-            build_input_channels(
-                state_frames,
-                None if current_forcing_np is None else current_forcing_np[batch_index],
+    if state_history_tensor.device.type == "cpu":
+        inputs: list[np.ndarray] = []
+        state_history_np = state_history_tensor.detach().numpy()
+        current_forcing_np = None if current_forcing_features is None else current_forcing_features.detach().numpy()
+        for batch_index in range(state_history_np.shape[0]):
+            state_frames = [state_history_np[batch_index, index] for index in range(state_history_np.shape[1])]
+            inputs.append(
+                build_input_channels(
+                    state_frames,
+                    None if current_forcing_np is None else current_forcing_np[batch_index],
+                )
             )
-        )
-    return torch.from_numpy(np.stack(inputs, axis=0)).to(state_history_tensor.device)
+        return torch.from_numpy(np.stack(inputs, axis=0))
+
+    batch_size, history_length, channel_count, height, width = state_history_tensor.shape
+    state_inputs = state_history_tensor.reshape(batch_size, history_length * channel_count, height, width)
+    if current_forcing_features is None:
+        return state_inputs
+    return torch.cat([state_inputs, current_forcing_features], dim=1)
 
 
 def _laplacian_energy(values: torch.Tensor) -> torch.Tensor:
