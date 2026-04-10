@@ -10,7 +10,7 @@ CONFIG_OVERRIDES = {
     "block_type": "convnext",
     "stage_depth": 2,
     "norm_type": "groupnorm",
-    "skip_fusion_mode": "concat",
-    "upsample_mode": "transpose",
+    "skip_fusion_mode": "add",
+    "upsample_mode": "bilinear",
 }
 # EVOLVE-BLOCK-END

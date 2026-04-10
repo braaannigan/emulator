@@ -121,3 +121,46 @@ def test_train_unet_model_supports_multistep_operator(tmp_path: Path):
     assert train_info["curriculum_final_rollout_horizon"] == 4
     history = json.loads(config.training_history_path.read_text(encoding="utf-8"))
     assert history["status"] == "completed"
+
+
+def test_train_unet_model_records_periodic_eval_results_and_stops_early(tmp_path: Path):
+    config = load_unet_thickness_config("config/emulator/unet_thickness.yaml").with_overrides(
+        interim_output_root=tmp_path / "interim",
+        raw_output_root=tmp_path / "raw",
+        experiment_id="unit-unet-early-stop",
+        epochs=6,
+        batch_size=1,
+        early_stopping_eval_interval_epochs=2,
+    )
+    model = UnetThicknessModel(
+        input_channels=1,
+        hidden_channels=4,
+        num_levels=1,
+        kernel_size=3,
+        state_channels=1,
+        forcing_channels=0,
+        fusion_mode="input",
+        residual_connection=True,
+        prognostic_channels=1,
+    )
+    frames = np.arange(8 * 1 * 4 * 4, dtype=np.float32).reshape(8, 1, 4, 4)
+
+    def periodic_eval(epoch: int) -> dict[str, object]:
+        return {
+            "epoch": epoch,
+            "eval_mse_mean": float(epoch),
+            "eval_mse_last": float(epoch + 1),
+            "stop_training": epoch >= 4,
+            "stop_reason": "unit-test threshold crossed" if epoch >= 4 else None,
+        }
+
+    train_info = train_unet_model(config, model, frames, None, periodic_eval_callback=periodic_eval)
+
+    history = json.loads(config.training_history_path.read_text(encoding="utf-8"))
+    assert history["status"] == "stopped"
+    assert history["epochs_completed"] == 4
+    assert history["stopped_early"] is True
+    assert history["stop_reason"] == "unit-test threshold crossed"
+    assert [entry["epoch"] for entry in history["periodic_eval_results"]] == [2, 4]
+    assert train_info["epochs_completed"] == 4
+    assert train_info["stopped_early"] is True

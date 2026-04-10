@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import json
+from pathlib import Path
 
+import numpy as np
 import torch
 
-from src.models.cnn_thickness.animation import create_rollout_comparison_animation
 from src.models.cnn_thickness.data import split_sequence
 from src.models.cnn_thickness.evaluate import mean_squared_error, mse_per_timestep, save_metrics, save_rollout_dataset
-from src.models.cnn_thickness.train import set_random_seed
+from src.models.cnn_thickness.train import select_device, set_random_seed
 from src.models.residual_thickness.training import (
     autoregressive_rollout_with_forcing,
     build_forcing_features,
@@ -49,6 +51,163 @@ def _first_visualization_channel(
     return field_channel_indices(netcdf_path, state_fields, requested_field)[0]
 
 
+def _evaluate_rollout(
+    config: UnetThicknessConfig,
+    split,
+    rollout: np.ndarray,
+) -> dict[str, object]:
+    field_indices = field_channel_indices(str(config.source_netcdf_path), config.state_fields, config.field_name)
+    truth = split.eval_frames[1:, field_indices]
+    rollout_field = rollout[:, field_indices]
+    eval_time_days = split.eval_time_days[1:]
+    eval_mask = None
+    if config.eval_window_days is not None:
+        window_limit = float(eval_time_days[0] + config.eval_window_days)
+        eval_mask = eval_time_days <= window_limit
+        truth = truth[eval_mask]
+        rollout_field = rollout_field[eval_mask]
+        eval_time_days = eval_time_days[eval_mask]
+    per_timestep_mse = mse_per_timestep(truth, rollout_field)
+    return {
+        "field_indices": field_indices,
+        "truth": truth,
+        "rollout_field": rollout_field,
+        "eval_time_days": eval_time_days,
+        "eval_mask": eval_mask,
+        "mse": mean_squared_error(truth, rollout_field),
+        "per_timestep_mse": per_timestep_mse,
+    }
+
+
+def _load_early_stopping_reference(config: UnetThicknessConfig) -> dict[str, object] | None:
+    metrics_path = config.early_stopping_best_metrics_path
+    if metrics_path is None:
+        return None
+    payload = json.loads(Path(metrics_path).read_text(encoding="utf-8"))
+    per_timestep = payload.get("eval_mse_per_timestep")
+    if "eval_mse_mean" not in payload:
+        raise ValueError(f"Reference metrics file {metrics_path} is missing eval_mse_mean.")
+    periodic_eval_results = payload.get("periodic_eval_results", [])
+    epoch_curve: dict[int, dict[str, float | None]] = {}
+    if isinstance(periodic_eval_results, list):
+        for entry in periodic_eval_results:
+            if not isinstance(entry, dict) or "epoch" not in entry or "eval_mse_mean" not in entry:
+                continue
+            epoch_curve[int(entry["epoch"])] = {
+                "eval_mse_mean": float(entry["eval_mse_mean"]),
+                "eval_mse_last": None if entry.get("eval_mse_last") is None else float(entry["eval_mse_last"]),
+            }
+    return {
+        "metrics_path": str(metrics_path),
+        "eval_mse_mean": float(payload["eval_mse_mean"]),
+        "eval_mse_last": None
+        if not isinstance(per_timestep, list) or len(per_timestep) == 0
+        else float(per_timestep[-1]),
+        "epoch_curve": epoch_curve,
+    }
+
+
+def _scheduled_early_stopping_margin(config: UnetThicknessConfig, epoch: int) -> float | None:
+    if config.early_stopping_margin_start is None:
+        return None
+    if config.early_stopping_margin_decay is not None:
+        if config.early_stopping_eval_interval_epochs <= 0:
+            raise ValueError("early_stopping_eval_interval_epochs must be positive when using margin decay.")
+        checkpoint_index = max((int(epoch) // int(config.early_stopping_eval_interval_epochs)) - 1, 0)
+        return float(config.early_stopping_margin_start) * (float(config.early_stopping_margin_decay) ** checkpoint_index)
+    if config.early_stopping_margin_end is None:
+        return None
+    if config.epochs <= 1:
+        return float(config.early_stopping_margin_end)
+    progress = float(max(epoch - 1, 0)) / float(config.epochs - 1)
+    return float(config.early_stopping_margin_start) + (
+        (float(config.early_stopping_margin_end) - float(config.early_stopping_margin_start)) * progress
+    )
+
+
+def _build_periodic_eval_callback(
+    config: UnetThicknessConfig,
+    model: UnetThicknessModel,
+    split,
+    standardizer,
+    eval_forcing: np.ndarray | None,
+    device: torch.device,
+) -> tuple[callable | None, dict[str, object] | None]:
+    interval = int(config.early_stopping_eval_interval_epochs)
+    if interval <= 0:
+        return None, None
+
+    reference = _load_early_stopping_reference(config)
+    if reference is not None:
+        has_linear_schedule = (
+            config.early_stopping_margin_start is not None and config.early_stopping_margin_end is not None
+        )
+        has_decay_schedule = (
+            config.early_stopping_margin_start is not None and config.early_stopping_margin_decay is not None
+        )
+        if not (has_linear_schedule or has_decay_schedule):
+            raise ValueError(
+                "Early stopping margins must provide either start/end or start/decay when "
+                "early_stopping_best_metrics_path is set."
+            )
+
+    def _callback(epoch: int) -> dict[str, object]:
+        rollout = autoregressive_rollout_with_forcing(
+            model,
+            split.eval_frames,
+            config.state_history,
+            eval_forcing,
+            standardizer,
+            device,
+        )
+        evaluation = _evaluate_rollout(config, split, rollout)
+        per_timestep_mse = evaluation["per_timestep_mse"]
+        eval_mse_mean = float(per_timestep_mse.mean())
+        eval_mse_last = float(per_timestep_mse[-1])
+        result: dict[str, object] = {
+            "epoch": epoch,
+            "eval_mse_mean": eval_mse_mean,
+            "eval_mse_last": eval_mse_last,
+            "stop_training": False,
+            "stop_reason": None,
+        }
+        if reference is None:
+            return result
+
+        epoch_curve = reference.get("epoch_curve", {})
+        benchmark = epoch_curve.get(epoch)
+        reference_eval_mse_mean = float(reference["eval_mse_mean"])
+        reference_eval_mse_last = reference["eval_mse_last"]
+        reference_epoch = None
+        if isinstance(benchmark, dict):
+            reference_eval_mse_mean = float(benchmark["eval_mse_mean"])
+            reference_eval_mse_last = benchmark["eval_mse_last"]
+            reference_epoch = epoch
+        margin_ratio = _scheduled_early_stopping_margin(config, epoch)
+        stop_threshold = reference_eval_mse_mean * (1.0 + float(margin_ratio))
+        should_stop = eval_mse_mean > stop_threshold
+        result.update(
+            {
+                "reference_metrics_path": reference["metrics_path"],
+                "reference_epoch": reference_epoch,
+                "reference_eval_mse_mean": reference_eval_mse_mean,
+                "reference_eval_mse_last": reference_eval_mse_last,
+                "margin_ratio": float(margin_ratio),
+                "stop_threshold": stop_threshold,
+                "stop_training": should_stop,
+                "stop_reason": None
+                if not should_stop
+                else (
+                    "Periodic eval MSE exceeded the early-stopping threshold: "
+                    f"{eval_mse_mean:.4f} > {stop_threshold:.4f}."
+                ),
+            }
+        )
+        return result
+
+    return _callback, reference
+
+
 def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str, str | float | int]:
     if not isinstance(config, UnetThicknessConfig):
         config = load_unet_thickness_config(config)
@@ -67,6 +226,7 @@ def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str
     normalized_forcing_features = (
         None if forcing_standardizer is None or forcing_features is None else forcing_standardizer.normalize(forcing_features)
     )
+    eval_forcing = None if normalized_forcing_features is None else normalized_forcing_features[split.train_frames.shape[0] :]
     prognostic_channels = int(split.train_frames.shape[1])
 
     model = UnetThicknessModel(
@@ -88,15 +248,24 @@ def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str
         residual_step_scale=config.residual_step_scale,
         prognostic_channels=prognostic_channels,
     )
+    train_device = select_device()
+    periodic_eval_callback, early_stopping_reference = _build_periodic_eval_callback(
+        config,
+        model,
+        split,
+        standardizer,
+        eval_forcing,
+        train_device,
+    )
     train_info = train_unet_model(
         config,
         model,
         standardizer.normalize(split.train_frames),
         None if normalized_forcing_features is None else normalized_forcing_features[: split.train_frames.shape[0]],
+        periodic_eval_callback=periodic_eval_callback,
     )
     device = torch.device(train_info["device"])
 
-    eval_forcing = None if normalized_forcing_features is None else normalized_forcing_features[split.train_frames.shape[0] :]
     rollout = autoregressive_rollout_with_forcing(
         model,
         split.eval_frames,
@@ -105,18 +274,14 @@ def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str
         standardizer,
         device,
     )
-    field_indices = field_channel_indices(str(config.source_netcdf_path), config.state_fields, config.field_name)
-    truth = split.eval_frames[1:, field_indices]
-    rollout_field = rollout[:, field_indices]
-    eval_time_days = split.eval_time_days[1:]
-    if config.eval_window_days is not None:
-        window_limit = float(eval_time_days[0] + config.eval_window_days)
-        eval_mask = eval_time_days <= window_limit
-        truth = truth[eval_mask]
-        rollout_field = rollout_field[eval_mask]
-        eval_time_days = eval_time_days[eval_mask]
-    mse = mean_squared_error(truth, rollout_field)
-    per_timestep_mse = mse_per_timestep(truth, rollout_field)
+    evaluation = _evaluate_rollout(config, split, rollout)
+    field_indices = evaluation["field_indices"]
+    truth = evaluation["truth"]
+    rollout_field = evaluation["rollout_field"]
+    eval_time_days = evaluation["eval_time_days"]
+    eval_mask = evaluation["eval_mask"]
+    mse = float(evaluation["mse"])
+    per_timestep_mse = evaluation["per_timestep_mse"]
 
     config.interim_experiment_dir.mkdir(parents=True, exist_ok=True)
     torch.save(
@@ -175,6 +340,8 @@ def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str
         rollout_meridional_velocity=rollout_meridional_velocity,
     )
     if config.animation_fps > 0:
+        from src.models.cnn_thickness.animation import create_rollout_comparison_animation
+
         create_rollout_comparison_animation(config.rollout_path, config.animation_path, fps=config.animation_fps)
 
     metrics = {
@@ -200,10 +367,24 @@ def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str
         "residual_step_scale": config.residual_step_scale,
         "scheduled_sampling_max_prob": config.scheduled_sampling_max_prob,
         "high_frequency_loss_weight": config.high_frequency_loss_weight,
+        "early_stopping_eval_interval_epochs": config.early_stopping_eval_interval_epochs,
+        "early_stopping_best_metrics_path": None
+        if config.early_stopping_best_metrics_path is None
+        else str(config.early_stopping_best_metrics_path),
+        "early_stopping_margin_start": config.early_stopping_margin_start,
+        "early_stopping_margin_end": config.early_stopping_margin_end,
+        "early_stopping_margin_decay": config.early_stopping_margin_decay,
+        "early_stopping_reference_eval_mse_mean": None
+        if early_stopping_reference is None
+        else float(early_stopping_reference["eval_mse_mean"]),
         "eval_window_days": config.eval_window_days,
         "curriculum_rollout_steps": [int(value) for value in config.curriculum_rollout_steps],
         "curriculum_transition_epochs": [int(value) for value in config.curriculum_transition_epochs],
         "curriculum_final_rollout_horizon": int(train_info["curriculum_final_rollout_horizon"]),
+        "epochs_completed": int(train_info["epochs_completed"]),
+        "stopped_early": bool(train_info["stopped_early"]),
+        "stop_reason": train_info["stop_reason"],
+        "periodic_eval_results": train_info["periodic_eval_results"],
         "train_start_day": config.train_start_day,
         "epochs": config.epochs,
         "train_timesteps": int(split.train_frames.shape[0]),
@@ -229,4 +410,6 @@ def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str
         "eval_mse_mean": float(per_timestep_mse.mean()),
         "eval_mse_last": float(per_timestep_mse[-1]),
         "train_loss": float(train_info["train_loss"]),
+        "epochs_completed": int(train_info["epochs_completed"]),
+        "stopped_early": bool(train_info["stopped_early"]),
     }

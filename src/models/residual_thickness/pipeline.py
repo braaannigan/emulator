@@ -4,7 +4,6 @@ from dataclasses import asdict
 
 import torch
 
-from src.models.cnn_thickness.animation import create_rollout_comparison_animation
 from src.models.cnn_thickness.data import split_sequence
 from src.models.cnn_thickness.evaluate import mean_squared_error, mse_per_timestep, save_metrics, save_rollout_dataset
 from src.models.cnn_thickness.train import set_random_seed
@@ -109,6 +108,8 @@ def run_residual_thickness_experiment(config: ResidualThicknessConfig | str) -> 
     )
     save_rollout_dataset(config.rollout_path, truth=truth, rollout=rollout_field, time_days=eval_time_days, y=y, x=x)
     if config.animation_fps > 0:
+        from src.models.cnn_thickness.animation import create_rollout_comparison_animation
+
         create_rollout_comparison_animation(config.rollout_path, config.animation_path, fps=config.animation_fps)
 
     metrics = {

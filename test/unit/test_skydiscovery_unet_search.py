@@ -37,14 +37,21 @@ def test_validate_candidate_overrides_normalizes_values():
             "kernel_size": 3,
             "block_type": "convnext",
             "stage_depth": 2,
+            "dilation_cycle": 4,
             "norm_type": "groupnorm",
+            "fusion_mode": "per_scale",
             "skip_fusion_mode": "gated",
             "upsample_mode": "bilinear",
+            "residual_step_scale": 0.75,
+            "scheduled_sampling_max_prob": 0.2,
+            "high_frequency_loss_weight": 1e-4,
         }
     )
 
     assert set(overrides) <= ALLOWED_OVERRIDE_KEYS
     assert overrides["stage_depth"] == 2
+    assert overrides["dilation_cycle"] == 4
+    assert overrides["fusion_mode"] == "per_scale"
 
 
 def test_configure_openrouter_maps_named_key(monkeypatch, tmp_path: Path):
@@ -73,11 +80,23 @@ def test_evaluate_unet_candidate_runs_pipeline(monkeypatch, tmp_path: Path):
     class ConfigStub:
         def __init__(self):
             self.overrides = {}
+            self.early_stopping_eval_interval_epochs = 0
+            self.early_stopping_best_metrics_path = "benchmark.json"
 
         def with_overrides(self, **kwargs):
             clone = ConfigStub()
             clone.overrides = self.overrides | kwargs
+            clone.early_stopping_eval_interval_epochs = kwargs.get(
+                "early_stopping_eval_interval_epochs",
+                self.early_stopping_eval_interval_epochs,
+            )
+            clone.early_stopping_best_metrics_path = kwargs.get(
+                "early_stopping_best_metrics_path",
+                self.early_stopping_best_metrics_path,
+            )
             return clone
+
+    seen: dict[str, object] = {}
 
     monkeypatch.setenv("SKYDISCOVER_BASE_CONFIG", str(config_path))
     monkeypatch.setenv("SKYDISCOVER_DISCOVERY_EPOCHS", "5")
@@ -85,7 +104,8 @@ def test_evaluate_unet_candidate_runs_pipeline(monkeypatch, tmp_path: Path):
     monkeypatch.setattr("src.skydiscovery.unet_search.load_unet_thickness_config", lambda path: ConfigStub())
     monkeypatch.setattr(
         "src.skydiscovery.unet_search.run_unet_thickness_experiment",
-        lambda config: {
+        lambda config: seen.update({"config": config})
+        or {
             "eval_mse_mean": 12.5,
             "eval_mse_last": 25.0,
             "train_loss": 0.1,
@@ -99,6 +119,7 @@ def test_evaluate_unet_candidate_runs_pipeline(monkeypatch, tmp_path: Path):
 
     assert metrics["combined_score"] == -12.5
     assert metrics["eval_mse_last"] == 25.0
+    assert seen["config"].overrides["early_stopping_eval_interval_epochs"] == 5
 
 
 def test_evaluate_unet_candidate_penalizes_invalid_program(tmp_path: Path, monkeypatch):

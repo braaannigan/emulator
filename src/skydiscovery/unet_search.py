@@ -4,7 +4,6 @@ import importlib.util
 import json
 import os
 import tempfile
-import types
 import uuid
 from pathlib import Path
 from typing import Any
@@ -25,15 +24,30 @@ ALLOWED_OVERRIDE_KEYS = {
     "kernel_size",
     "block_type",
     "stage_depth",
+    "dilation_cycle",
     "norm_type",
+    "fusion_mode",
     "skip_fusion_mode",
     "upsample_mode",
+    "residual_step_scale",
+    "scheduled_sampling_max_prob",
+    "high_frequency_loss_weight",
 }
 
 ALLOWED_BLOCK_TYPES = {"standard", "convnext"}
 ALLOWED_NORM_TYPES = {"none", "groupnorm"}
+ALLOWED_FUSION_MODES = {"input", "bottleneck", "per_scale"}
 ALLOWED_SKIP_FUSION_MODES = {"concat", "add", "gated"}
 ALLOWED_UPSAMPLE_MODES = {"transpose", "bilinear"}
+
+
+def _default_skydiscovery_early_stopping_overrides(config: Any, discovery_epochs: int) -> dict[str, Any]:
+    overrides: dict[str, Any] = {}
+    interval = getattr(config, "early_stopping_eval_interval_epochs", 0)
+    benchmark_path = getattr(config, "early_stopping_best_metrics_path", None)
+    if benchmark_path is not None and int(interval) <= 0:
+        overrides["early_stopping_eval_interval_epochs"] = min(max(discovery_epochs, 1), 5)
+    return overrides
 
 
 def load_env_key(env_var_name: str, env_file: str | Path = ".env") -> str:
@@ -116,11 +130,21 @@ def validate_candidate_overrides(overrides: dict[str, Any]) -> dict[str, Any]:
         if value not in {1, 2, 3}:
             raise ValueError("stage_depth out of allowed range")
         validated["stage_depth"] = value
+    if "dilation_cycle" in validated:
+        value = int(validated["dilation_cycle"])
+        if value not in {1, 2, 3, 4}:
+            raise ValueError("dilation_cycle out of allowed range")
+        validated["dilation_cycle"] = value
     if "norm_type" in validated:
         value = str(validated["norm_type"])
         if value not in ALLOWED_NORM_TYPES:
             raise ValueError("norm_type out of allowed range")
         validated["norm_type"] = value
+    if "fusion_mode" in validated:
+        value = str(validated["fusion_mode"])
+        if value not in ALLOWED_FUSION_MODES:
+            raise ValueError("fusion_mode out of allowed range")
+        validated["fusion_mode"] = value
     if "skip_fusion_mode" in validated:
         value = str(validated["skip_fusion_mode"])
         if value not in ALLOWED_SKIP_FUSION_MODES:
@@ -131,6 +155,21 @@ def validate_candidate_overrides(overrides: dict[str, Any]) -> dict[str, Any]:
         if value not in ALLOWED_UPSAMPLE_MODES:
             raise ValueError("upsample_mode out of allowed range")
         validated["upsample_mode"] = value
+    if "residual_step_scale" in validated:
+        value = float(validated["residual_step_scale"])
+        if not 0.5 <= value <= 1.25:
+            raise ValueError("residual_step_scale out of allowed range")
+        validated["residual_step_scale"] = value
+    if "scheduled_sampling_max_prob" in validated:
+        value = float(validated["scheduled_sampling_max_prob"])
+        if value not in {0.0, 0.1, 0.2, 0.3}:
+            raise ValueError("scheduled_sampling_max_prob out of allowed range")
+        validated["scheduled_sampling_max_prob"] = value
+    if "high_frequency_loss_weight" in validated:
+        value = float(validated["high_frequency_loss_weight"])
+        if value not in {0.0, 1.0e-4, 3.0e-4, 1.0e-3}:
+            raise ValueError("high_frequency_loss_weight out of allowed range")
+        validated["high_frequency_loss_weight"] = value
     return validated
 
 
@@ -153,11 +192,13 @@ def evaluate_unet_candidate(program_path: str) -> dict[str, Any]:
 
     config = load_unet_thickness_config(base_config_path)
     experiment_id = f"skyd-{uuid.uuid4().hex[:10]}"
+    early_stopping_overrides = _default_skydiscovery_early_stopping_overrides(config, discovery_epochs)
     config = config.with_overrides(
         experiment_id=experiment_id,
         epochs=discovery_epochs,
         eval_window_days=eval_window_days,
         animation_fps=0,
+        **early_stopping_overrides,
         **overrides,
     )
     if source_experiment_id is not None:
@@ -237,9 +278,26 @@ def run_unet_discovery(
         system_prompt=(
             "You are optimizing a bounded architecture-and-training dictionary for a U-Net ocean emulator. "
             "Only edit CONFIG_OVERRIDES. You may change architecture choices like block type, forcing fusion, skip fusion, "
-            "upsampling, normalization, and stage depth, in addition to optimization hyperparameters. "
+            "upsampling, normalization, dilation, curriculum-related training behavior, and optimization hyperparameters. "
             "Favor changes that plausibly improve eval_mse_mean on the current dataset. "
-            "Keep values within the existing search space and do not add new keys."
+            "Do not resubmit the parent config or near-identical variants. Prefer changing 2 to 4 keys per proposal, and "
+            "use the archive to explore meaningfully different combinations instead of tiny learning-rate nudges alone. "
+            "Keep values within the existing search space and do not add new keys. "
+            "Allowed categorical values are strict: "
+            "block_type in {standard, convnext}; "
+            "norm_type in {none, groupnorm}; "
+            "fusion_mode in {input, bottleneck, per_scale}; "
+            "skip_fusion_mode in {concat, add, gated}; "
+            "upsample_mode in {transpose, bilinear}. "
+            "Allowed numeric choices are also strict: "
+            "hidden_channels in {16, 24, 32, 40}; "
+            "num_levels in {3, 4, 5}; "
+            "kernel_size in {3, 5, 7}; "
+            "stage_depth in {1, 2, 3}; "
+            "dilation_cycle in {1, 2, 3, 4}; "
+            "scheduled_sampling_max_prob in {0.0, 0.1, 0.2, 0.3}; "
+            "high_frequency_loss_weight in {0.0, 1e-4, 3e-4, 1e-3}. "
+            "residual_step_scale must stay within [0.5, 1.25]."
         ),
     )
 
