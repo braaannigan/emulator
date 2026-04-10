@@ -19,7 +19,7 @@ def _require_aronnax_driver():
 
 
 def build_zonal_wind(config: DoubleGyreConfig):
-    if config.experiment_name == "double_gyre_shifting_wind":
+    if config.experiment_name.startswith("double_gyre_shifting_wind"):
         forcing_cycle_seconds = config.wind_shift_period_days * SECONDS_PER_DAY
         snapshot_seconds = config.dt_seconds
         if config.wind_record_interval_hours is not None:

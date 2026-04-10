@@ -40,6 +40,11 @@ class UnetThicknessConfig:
     curriculum_transition_epochs: tuple[int, ...]
     scheduled_sampling_max_prob: float
     high_frequency_loss_weight: float
+    early_stopping_eval_interval_epochs: int
+    early_stopping_best_metrics_path: Path | None
+    early_stopping_margin_start: float | None
+    early_stopping_margin_end: float | None
+    early_stopping_margin_decay: float | None
     train_start_day: float
     eval_window_days: float | None
     random_seed: int
@@ -51,7 +56,12 @@ class UnetThicknessConfig:
     def with_overrides(self, **overrides: Any) -> "UnetThicknessConfig":
         normalized: dict[str, Any] = {}
         for key, value in overrides.items():
-            if key in {"source_data_root", "raw_output_root", "interim_output_root"} and value is not None:
+            if key in {
+                "source_data_root",
+                "raw_output_root",
+                "interim_output_root",
+                "early_stopping_best_metrics_path",
+            } and value is not None:
                 normalized[key] = Path(value)
             else:
                 normalized[key] = value
@@ -138,6 +148,19 @@ def load_unet_thickness_config(path: str | Path) -> UnetThicknessConfig:
         curriculum_transition_epochs=tuple(int(value) for value in payload.get("curriculum_transition_epochs", [0])),
         scheduled_sampling_max_prob=float(payload.get("scheduled_sampling_max_prob", 0.0)),
         high_frequency_loss_weight=float(payload.get("high_frequency_loss_weight", 0.0)),
+        early_stopping_eval_interval_epochs=int(payload.get("early_stopping_eval_interval_epochs", 0)),
+        early_stopping_best_metrics_path=None
+        if payload.get("early_stopping_best_metrics_path") is None
+        else Path(payload["early_stopping_best_metrics_path"]),
+        early_stopping_margin_start=None
+        if payload.get("early_stopping_margin_start") is None
+        else float(payload["early_stopping_margin_start"]),
+        early_stopping_margin_end=None
+        if payload.get("early_stopping_margin_end") is None
+        else float(payload["early_stopping_margin_end"]),
+        early_stopping_margin_decay=None
+        if payload.get("early_stopping_margin_decay") is None
+        else float(payload["early_stopping_margin_decay"]),
         train_start_day=float(payload.get("train_start_day", 0.0)),
         eval_window_days=None if payload.get("eval_window_days") is None else float(payload.get("eval_window_days")),
         random_seed=int(payload["random_seed"]),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+from typing import Callable
 
 import numpy as np
 import torch
@@ -93,11 +94,15 @@ def _prediction_sequence(predictions: torch.Tensor) -> tuple[torch.Tensor, ...]:
     raise ValueError(f"Unsupported prediction rank: {predictions.ndim}")
 
 
+PeriodicEvalCallback = Callable[[int], dict[str, object] | None]
+
+
 def train_unet_model(
     config: UnetThicknessConfig,
     model: torch.nn.Module,
     normalized_train_frames: np.ndarray,
     forcing_features: np.ndarray | None,
+    periodic_eval_callback: PeriodicEvalCallback | None = None,
 ) -> dict[str, float]:
     set_random_seed(config.random_seed)
     device = select_device()
@@ -116,6 +121,9 @@ def train_unet_model(
     last_rollout_horizon = 1
     operator_output_steps = max(config.output_steps, 1)
     epoch_train_losses: list[float] = []
+    periodic_eval_results: list[dict[str, object]] = []
+    stopped_early = False
+    stop_reason: str | None = None
 
     def _write_training_history(status: str) -> None:
         config.interim_experiment_dir.mkdir(parents=True, exist_ok=True)
@@ -125,6 +133,10 @@ def train_unet_model(
             "epochs_completed": len(epoch_train_losses),
             "epochs_total": config.epochs,
             "epoch_train_losses": epoch_train_losses,
+            "early_stopping_eval_interval_epochs": config.early_stopping_eval_interval_epochs,
+            "periodic_eval_results": periodic_eval_results,
+            "stopped_early": stopped_early,
+            "stop_reason": stop_reason,
         }
         config.training_history_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
@@ -190,9 +202,26 @@ def train_unet_model(
             epoch_steps += 1
             optimization_steps += 1
         epoch_train_losses.append(epoch_loss_total / max(epoch_steps, 1))
-        _write_training_history(status="running")
+        if (
+            periodic_eval_callback is not None
+            and config.early_stopping_eval_interval_epochs > 0
+            and (epoch_index + 1) % config.early_stopping_eval_interval_epochs == 0
+        ):
+            model.eval()
+            with torch.no_grad():
+                eval_result = periodic_eval_callback(epoch_index + 1)
+            model.train()
+            if eval_result is not None:
+                periodic_eval_results.append(dict(eval_result))
+                if bool(eval_result.get("stop_training", False)):
+                    stopped_early = True
+                    reason = eval_result.get("stop_reason")
+                    stop_reason = None if reason is None else str(reason)
+        _write_training_history(status="stopped" if stopped_early else "running")
+        if stopped_early:
+            break
 
-    _write_training_history(status="completed")
+    _write_training_history(status="stopped" if stopped_early else "completed")
 
     return {
         "train_loss": final_loss,
@@ -201,4 +230,8 @@ def train_unet_model(
         "training_examples": max(frames_tensor.shape[0] - last_rollout_horizon, 0),
         "curriculum_final_rollout_horizon": last_rollout_horizon,
         "epoch_train_losses": epoch_train_losses,
+        "epochs_completed": len(epoch_train_losses),
+        "periodic_eval_results": periodic_eval_results,
+        "stopped_early": stopped_early,
+        "stop_reason": stop_reason,
     }

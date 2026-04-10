@@ -12,13 +12,18 @@ ARONNAX_CHECKOUT_DIR = Path("data/interim/aronnax-src")
 
 def ensure_aronnax_checkout() -> Path:
     checkout_dir = ARONNAX_CHECKOUT_DIR
-    if not (checkout_dir / ".git").exists():
+    checkout_exists = (checkout_dir / ".git").exists()
+    if not checkout_exists:
         checkout_dir.parent.mkdir(parents=True, exist_ok=True)
         subprocess.check_call(
             ["git", "clone", "--recursive", ARONNAX_REPO_URL, str(checkout_dir)]
         )
 
-    subprocess.check_call(["git", "-C", str(checkout_dir), "fetch", "--all"])
+    try:
+        subprocess.check_call(["git", "-C", str(checkout_dir), "fetch", "--all"])
+    except subprocess.CalledProcessError:
+        if not checkout_exists:
+            raise
     subprocess.check_call(["git", "-C", str(checkout_dir), "checkout", ARONNAX_COMMIT])
     subprocess.check_call(
         ["git", "-C", str(checkout_dir), "submodule", "update", "--init", "--recursive"]

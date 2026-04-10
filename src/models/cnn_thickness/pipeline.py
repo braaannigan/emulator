@@ -5,7 +5,6 @@ from dataclasses import asdict
 import numpy as np
 import torch
 
-from .animation import create_rollout_comparison_animation
 from .config import CnnThicknessConfig, load_cnn_thickness_config
 from .data import fit_standardizer, load_field_dataset, split_sequence
 from .evaluate import mean_squared_error, mse_per_timestep, save_metrics, save_rollout_dataset
@@ -48,7 +47,10 @@ def run_cnn_thickness_experiment(config: CnnThicknessConfig | str) -> dict[str, 
         config.checkpoint_path,
     )
     save_rollout_dataset(config.rollout_path, truth=truth, rollout=rollout, time_days=eval_time_days, y=y, x=x)
-    create_rollout_comparison_animation(config.rollout_path, config.animation_path, fps=config.animation_fps)
+    if config.animation_fps > 0:
+        from .animation import create_rollout_comparison_animation
+
+        create_rollout_comparison_animation(config.rollout_path, config.animation_path, fps=config.animation_fps)
 
     metrics = {
         "source_experiment_id": config.source_experiment_id,
