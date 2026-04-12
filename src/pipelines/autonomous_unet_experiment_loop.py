@@ -767,6 +767,18 @@ def _parse_hypothesis_response(content: str) -> tuple[list[HypothesisProposal], 
         name = str(entry["name"])
         hypothesis = str(entry["hypothesis"])
         implementation_type = str(entry.get("implementation_type", "config"))
+        search_mode = str(entry.get("search_mode", "exploit"))
+        hypothesis_family = str(entry.get("hypothesis_family", "optimizer_tuning"))
+        if search_mode not in {"explore", "exploit", "artifact_hardening"}:
+            rejected.append(
+                {
+                    "name": name,
+                    "hypothesis": hypothesis,
+                    "reason": "invalid_search_mode",
+                    "details": f"Unsupported search_mode: {search_mode}",
+                }
+            )
+            continue
         if implementation_type not in {"config", "code"}:
             rejected.append(
                 {
@@ -805,6 +817,8 @@ def _parse_hypothesis_response(content: str) -> tuple[list[HypothesisProposal], 
                     name=name,
                     hypothesis=hypothesis,
                     implementation_type="code",
+                    search_mode=search_mode,
+                    hypothesis_family=hypothesis_family,
                     patch_targets=list(raw_targets),
                     patch_plan=patch_plan,
                 )
@@ -840,6 +854,8 @@ def _parse_hypothesis_response(content: str) -> tuple[list[HypothesisProposal], 
                 name=name,
                 hypothesis=hypothesis,
                 implementation_type="config",
+                search_mode=search_mode,
+                hypothesis_family=hypothesis_family,
                 overrides=overrides,
             )
         )
@@ -1129,6 +1145,8 @@ def materialize_candidate_configs(
                 name=proposal.name,
                 hypothesis=proposal.hypothesis,
                 implementation_type=proposal.implementation_type,
+                search_mode=proposal.search_mode,
+                hypothesis_family=proposal.hypothesis_family,
                 config_path=str(config_path.resolve()),
                 experiment_id=experiment_id,
                 overrides=proposal.overrides,
@@ -1233,6 +1251,8 @@ def run_candidate_training(
         name=record.name,
         hypothesis=record.hypothesis,
         implementation_type=record.implementation_type,
+        search_mode=record.search_mode,
+        hypothesis_family=record.hypothesis_family,
         config_path=record.config_path,
         experiment_id=record.experiment_id,
         overrides=record.overrides,
@@ -1302,6 +1322,8 @@ def reconcile_candidate_from_artifacts(record: CandidateRunRecord) -> CandidateR
         name=record.name,
         hypothesis=record.hypothesis,
         implementation_type=record.implementation_type,
+        search_mode=record.search_mode,
+        hypothesis_family=record.hypothesis_family,
         config_path=record.config_path,
         experiment_id=record.experiment_id,
         overrides=record.overrides,

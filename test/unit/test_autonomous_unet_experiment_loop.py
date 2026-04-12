@@ -77,6 +77,8 @@ def test_materialize_candidate_configs_writes_hypothesis_and_overrides(tmp_path:
     assert payload["hypothesis"] == "Test gated skip fusion."
     assert payload["skip_fusion_mode"] == "gated"
     assert records[0].experiment_id.endswith("gated-skip")
+    assert records[0].search_mode == "exploit"
+    assert records[0].hypothesis_family == "optimizer_tuning"
 
 
 def test_materialize_candidate_configs_respects_start_index(tmp_path: Path):
@@ -283,12 +285,16 @@ def test_parse_hypothesis_response_rejects_invalid_proposals_without_failing_bat
                 "name": "valid",
                 "hypothesis": "Uses a supported skip fusion change.",
                 "implementation_type": "config",
+                "search_mode": "explore",
+                "hypothesis_family": "skip_connection_design",
                 "overrides": {"skip_fusion_mode": "gated"},
             },
             {
                 "name": "code_valid",
                 "hypothesis": "Needs a training-loop change.",
                 "implementation_type": "code",
+                "search_mode": "artifact_hardening",
+                "hypothesis_family": "rollout_stabilization",
                 "patch_targets": ["src/models/unet_thickness/training.py"],
                 "patch_plan": "Add an alternate residual scheduler.",
             },
@@ -299,9 +305,35 @@ def test_parse_hypothesis_response_rejects_invalid_proposals_without_failing_bat
 
     assert [proposal.name for proposal in proposals] == ["valid", "code_valid"]
     assert proposals[1].implementation_type == "code"
+    assert proposals[0].search_mode == "explore"
+    assert proposals[0].hypothesis_family == "skip_connection_design"
+    assert proposals[1].search_mode == "artifact_hardening"
+    assert proposals[1].hypothesis_family == "rollout_stabilization"
     assert len(rejected) == 1
     assert rejected[0]["reason"] == "invalid_llm_proposal"
     assert "Unsupported override keys" in rejected[0]["details"]
+
+
+def test_materialize_candidate_configs_preserves_research_mode_fields(tmp_path: Path):
+    policy = load_autonomous_unet_policy("config/autoloop/default.yaml")
+    proposals = [
+        HypothesisProposal(
+            name="Boundary Idea",
+            hypothesis="Test a boundary-focused idea.",
+            search_mode="artifact_hardening",
+            hypothesis_family="boundary_condition_handling",
+            overrides={"skip_fusion_mode": "gated"},
+        )
+    ]
+
+    record = materialize_candidate_configs(
+        policy,
+        proposals=proposals,
+        batch_dir=tmp_path / "20260410T120000",
+    )[0]
+
+    assert record.search_mode == "artifact_hardening"
+    assert record.hypothesis_family == "boundary_condition_handling"
 
 
 def test_reconcile_candidate_from_artifacts_marks_completed_from_metrics(tmp_path: Path):
@@ -650,6 +682,113 @@ def test_run_autonomous_loop_records_evaluator_feedback_for_competitive_runs(tmp
     candidate = ledger["candidates"][0]
     assert candidate["artifact_severity"] == 2
     assert candidate["accept_tradeoff_for_cleaner_rollout"] is True
+
+
+def test_run_autonomous_loop_preserves_research_fields_and_stage_events(tmp_path: Path, monkeypatch):
+    policy_path = tmp_path / "policy.yaml"
+    policy_path.write_text(
+        "\n".join(
+            [
+                "base_config_path: config/emulator/unet_thickness_shifting_wind_2layer_window250_convnext_multistep2_dilated_bilinear_addskip_lr3p8e4_wd1p8e5_latecurr_residual_skydiscover.yaml",
+                "experiment_family: double_gyre_shifting_wind_2layer",
+                f"experiment_log_path: {tmp_path / 'experiments.jsonl'}",
+                f"experiment_compact_path: {tmp_path / 'experiments_compact.md'}",
+                "python_executable: .venv/bin/python",
+                f"output_root: {tmp_path / 'autoloop'}",
+                "llm:",
+                "  env_var_name: UNUSED",
+                "  model_name: openai/gpt-5.3-codex",
+                "  api_base: https://openrouter.ai/api/v1",
+                "  temperature: 0.3",
+                "  max_tokens: 1000",
+                "  timeout_seconds: 30",
+                "  max_total_calls: 3",
+                "batch:",
+                "  max_hypotheses: 1",
+                "  max_total_train_runs: 1",
+                "  max_total_llm_calls: 3",
+                "  max_total_patch_calls: 0",
+                "  sequential: true",
+                "  allow_code_patches: false",
+                "  stop_after_generation: false",
+                "patching:",
+                "  max_patch_attempts_per_hypothesis: 0",
+                "  max_repair_attempts_per_patch: 0",
+                "training:",
+                "  require_benchmark_path: true",
+                "  require_preflight_tests: false",
+                "  preflight_test_paths: []",
+                "promotion:",
+                "  primary_metric: eval_mse_mean",
+                "  maximize: false",
+                "  must_beat_incumbent_by: 0.0",
+                "evaluation:",
+                "  competitive_within_ratio: 0.2",
+                "  max_total_calls: 0",
+                "search:",
+                "  round_modes: [explore]",
+                "  explore_max_per_family: 2",
+                "  promising_within_ratio: 0.35",
+                "  max_optimizer_only_proposals_per_explore_round: 1",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "experiments.jsonl").write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        "src.pipelines.autonomous_unet_experiment_loop.run_preflight_checks",
+        lambda policy: {"ok": True},
+    )
+    monkeypatch.setattr(
+        "src.pipelines.autonomous_unet_experiment_loop.propose_hypotheses_via_openrouter",
+        lambda *args, **kwargs: (
+            [
+                HypothesisProposal(
+                    name="Boundary Idea",
+                    hypothesis="Test a more exploratory boundary idea.",
+                    search_mode="explore",
+                    hypothesis_family="boundary_condition_handling",
+                    overrides={"skip_fusion_mode": "gated"},
+                )
+            ],
+            [],
+        ),
+    )
+    monkeypatch.setattr(
+        "src.pipelines.autonomous_unet_experiment_loop.run_candidate_training",
+        lambda policy, *, record: type(record)(
+            **{
+                **record.__dict__,
+                "status": "completed",
+                "return_code": 0,
+                "finished_at": "2026-04-10T12:00:00+00:00",
+                "duration_seconds": 1.0,
+                "eval_mse_mean": 80.0,
+                "stop_reason": "done",
+                "metrics_path": str(tmp_path / f"{record.experiment_id}_metrics.json"),
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        "src.pipelines.autonomous_unet_experiment_loop.reconcile_candidate_from_artifacts",
+        lambda record: record,
+    )
+    monkeypatch.setattr(
+        "src.pipelines.autonomous_unet_experiment_loop.maybe_write_evaluator_artifacts",
+        lambda policy, candidate, incumbent_metrics: candidate,
+    )
+
+    payload = run_autonomous_unet_experiment_loop(policy_path=policy_path, batch_id="batch-research")
+    ledger = json.loads(Path(payload["ledger_path"]).read_text(encoding="utf-8"))
+
+    candidate = ledger["candidates"][0]
+    assert candidate["search_mode"] == "explore"
+    assert candidate["hypothesis_family"] == "boundary_condition_handling"
+    categories = [event["category"] for event in ledger["stage_events"]]
+    assert "proposal" in categories
+    assert "ranking" in categories
+    assert "candidate" in categories
 
 
 def test_run_autonomous_loop_records_failure_details_on_abort(tmp_path: Path, monkeypatch):
