@@ -14,6 +14,7 @@ class UnetThicknessConfig:
     source_data_root: Path
     source_experiment_id: str
     source_output_filename: str
+    hypothesis: str | None
     field_name: str
     state_fields: tuple[str, ...]
     train_fraction: float
@@ -122,6 +123,7 @@ def load_unet_thickness_config(path: str | Path) -> UnetThicknessConfig:
         source_data_root=Path(payload.get("source_data_root", "data/raw/double_gyre/generator")),
         source_experiment_id=str(payload["source_experiment_id"]),
         source_output_filename=str(payload.get("source_output_filename", "double_gyre.nc")),
+        hypothesis=None if payload.get("hypothesis") is None else str(payload["hypothesis"]),
         field_name=str(payload.get("field_name", "layer_thickness")),
         state_fields=tuple(payload.get("state_fields", [payload.get("field_name", "layer_thickness")])),
         train_fraction=float(payload["train_fraction"]),

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import json
+import time
 from typing import Callable
 
 import numpy as np
@@ -113,6 +115,7 @@ def train_unet_model(
 ) -> dict[str, float]:
     set_random_seed(config.random_seed)
     device = select_device()
+    should_use_mps = bool(torch.backends.mps.is_available())
     model.to(device)
 
     frames_tensor = torch.from_numpy(normalized_train_frames.astype(np.float32)).to(device)
@@ -128,18 +131,32 @@ def train_unet_model(
     last_rollout_horizon = 1
     operator_output_steps = max(config.output_steps, 1)
     epoch_train_losses: list[float] = []
+    epoch_length_seconds_per_epoch: list[float] = []
     periodic_eval_results: list[dict[str, object]] = []
     stopped_early = False
     stop_reason: str | None = None
+
+    def _updated_at() -> str:
+        return datetime.now(timezone.utc).isoformat()
 
     def _write_training_history(status: str) -> None:
         config.interim_experiment_dir.mkdir(parents=True, exist_ok=True)
         payload = {
             "experiment_id": config.resolved_experiment_id,
+            "hypothesis": config.hypothesis,
+            "updated_at": _updated_at(),
             "status": status,
+            "device": str(device),
+            "should_use_mps": should_use_mps,
             "epochs_completed": len(epoch_train_losses),
             "epochs_total": config.epochs,
             "epoch_train_losses": epoch_train_losses,
+            "epoch_length_seconds": (
+                None
+                if not epoch_length_seconds_per_epoch
+                else float(sum(epoch_length_seconds_per_epoch) / len(epoch_length_seconds_per_epoch))
+            ),
+            "epoch_length_seconds_per_epoch": epoch_length_seconds_per_epoch,
             "early_stopping_eval_interval_epochs": config.early_stopping_eval_interval_epochs,
             "periodic_eval_results": periodic_eval_results,
             "stopped_early": stopped_early,
@@ -150,6 +167,7 @@ def train_unet_model(
     model.train()
     _write_training_history(status="running")
     for epoch_index in range(config.epochs):
+        epoch_started_at = time.perf_counter()
         rollout_horizon = curriculum.horizon_for_epoch(epoch_index)
         last_rollout_horizon = rollout_horizon
         scheduled_sampling_prob = config.scheduled_sampling_max_prob * float(epoch_index + 1) / float(max(config.epochs, 1))
@@ -209,6 +227,7 @@ def train_unet_model(
             epoch_steps += 1
             optimization_steps += 1
         epoch_train_losses.append(epoch_loss_total / max(epoch_steps, 1))
+        epoch_length_seconds_per_epoch.append(time.perf_counter() - epoch_started_at)
         if (
             periodic_eval_callback is not None
             and config.early_stopping_eval_interval_epochs > 0
@@ -237,8 +256,13 @@ def train_unet_model(
         "training_examples": max(frames_tensor.shape[0] - last_rollout_horizon, 0),
         "curriculum_final_rollout_horizon": last_rollout_horizon,
         "epoch_train_losses": epoch_train_losses,
+        "epoch_length_seconds": (
+            0.0 if not epoch_length_seconds_per_epoch else float(sum(epoch_length_seconds_per_epoch) / len(epoch_length_seconds_per_epoch))
+        ),
+        "epoch_length_seconds_per_epoch": epoch_length_seconds_per_epoch,
         "epochs_completed": len(epoch_train_losses),
         "periodic_eval_results": periodic_eval_results,
         "stopped_early": stopped_early,
         "stop_reason": stop_reason,
+        "should_use_mps": should_use_mps,
     }

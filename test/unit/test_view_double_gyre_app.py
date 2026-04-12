@@ -53,6 +53,7 @@ class StreamlitStub:
         self.sidebar = SidebarStub(radio_value=page)
         self.captions: list[str] = []
         self.plotly_calls: list[object] = []
+        self.dataframes: list[object] = []
         self.json_payloads: list[dict] = []
         self.subheaders: list[str] = []
         self.info_messages: list[str] = []
@@ -71,6 +72,9 @@ class StreamlitStub:
 
     def plotly_chart(self, figure, use_container_width=True):
         self.plotly_calls.append(figure)
+
+    def dataframe(self, payload, use_container_width=True):
+        self.dataframes.append(payload)
 
     def columns(self, count):
         return [nullcontext() for _ in range(count)]
@@ -209,3 +213,62 @@ def test_main_routes_to_emulator_page(monkeypatch):
     view_double_gyre.main(st)
 
     assert called == {"raw": 0, "eval": 1}
+
+
+def test_render_autonomous_loop_page_shows_batch_and_iteration_tables(monkeypatch):
+    st = StreamlitStub(page="Autonomous Loop")
+    batch = type(
+        "Batch",
+        (),
+        {
+            "batch_id": "batch-01",
+            "phase": "complete",
+            "candidate_count": 1,
+            "screened_out_count": 2,
+            "updated_at": "2026-04-10T12:00:00+00:00",
+            "llm_calls_used": 1,
+            "completed_count": 1,
+            "best_eval_mse_mean": 12.5,
+            "failure_reason": None,
+            "ledger_path": Path("ledger.json"),
+        },
+    )()
+    st.sidebar.selectbox_values = [batch]
+
+    monkeypatch.setattr("src.pipelines.view_double_gyre.list_autonomous_batches", lambda: [batch])
+    monkeypatch.setattr(
+        "src.pipelines.view_double_gyre.load_autonomous_batch_details",
+        lambda path: {
+            "candidates": [
+                {
+                    "experiment_id": "exp-01",
+                    "status": "completed",
+                    "eval_mse_mean": 12.5,
+                    "stop_reason": "threshold",
+                    "started_at": "a",
+                    "finished_at": "b",
+                    "hypothesis": "hyp",
+                }
+            ]
+        },
+    )
+
+    view_double_gyre.render_autonomous_loop_page(st)
+
+    assert st.subheaders == ["Autonomous Batches", "Iteration Results"]
+    assert len(st.dataframes) == 2
+    assert st.dataframes[0][0]["batch_id"] == "batch-01"
+    assert st.dataframes[1][0]["experiment_id"] == "exp-01"
+
+
+def test_main_routes_to_autonomous_loop_page(monkeypatch):
+    st = StreamlitStub(page="Autonomous Loop")
+    called = {"raw": 0, "eval": 0, "autoloop": 0}
+
+    monkeypatch.setattr("src.pipelines.view_double_gyre.render_double_gyre_page", lambda st_module: called.__setitem__("raw", called["raw"] + 1))
+    monkeypatch.setattr("src.pipelines.view_double_gyre.render_emulator_evaluation_page", lambda st_module: called.__setitem__("eval", called["eval"] + 1))
+    monkeypatch.setattr("src.pipelines.view_double_gyre.render_autonomous_loop_page", lambda st_module: called.__setitem__("autoloop", called["autoloop"] + 1))
+
+    view_double_gyre.main(st)
+
+    assert called == {"raw": 0, "eval": 0, "autoloop": 1}

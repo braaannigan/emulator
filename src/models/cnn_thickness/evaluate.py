@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 
@@ -49,5 +50,6 @@ def save_rollout_dataset(
 
 def save_metrics(metrics_path: Path, metrics: dict[str, float | int | str]) -> Path:
     metrics_path.parent.mkdir(parents=True, exist_ok=True)
+    metrics["updated_at"] = datetime.now(timezone.utc).isoformat()
     metrics_path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")
     return metrics_path

@@ -13,6 +13,7 @@ def test_run_unet_thickness_experiment_writes_expected_artifacts(monkeypatch, tm
         raw_output_root=tmp_path / "raw",
         interim_output_root=tmp_path / "interim",
         experiment_id="unit-test",
+        hypothesis="unit-test hypothesis",
         train_start_day=2.0,
     )
 
@@ -60,9 +61,12 @@ def test_run_unet_thickness_experiment_writes_expected_artifacts(monkeypatch, tm
         or {
             "train_loss": 0.5,
             "device": "cpu",
+            "should_use_mps": False,
             "optimization_steps": 3,
             "training_examples": 1,
             "curriculum_final_rollout_horizon": 1,
+            "epoch_length_seconds": 1.25,
+            "epoch_length_seconds_per_epoch": [1.25] * 20,
             "epochs_completed": 20,
             "periodic_eval_results": [],
             "stopped_early": False,
@@ -89,6 +93,8 @@ def test_run_unet_thickness_experiment_writes_expected_artifacts(monkeypatch, tm
     assert outputs["epochs_completed"] == 20
     assert outputs["stopped_early"] is False
     assert observed["train_shape"] == (2, 1, 2, 2)
+    metrics = json.loads(Path(outputs["metrics_path"]).read_text(encoding="utf-8"))
+    assert metrics["hypothesis"] == "unit-test hypothesis"
 
 
 def test_run_unet_thickness_experiment_supports_multilayer_targets(monkeypatch, tmp_path: Path):
@@ -132,9 +138,12 @@ def test_run_unet_thickness_experiment_supports_multilayer_targets(monkeypatch, 
         lambda config, model, normalized_train_frames, forcing_features, periodic_eval_callback=None: {
             "train_loss": 0.25,
             "device": "cpu",
+            "should_use_mps": False,
             "optimization_steps": 3,
             "training_examples": 1,
             "curriculum_final_rollout_horizon": 1,
+            "epoch_length_seconds": 1.0,
+            "epoch_length_seconds_per_epoch": [1.0] * 20,
             "epochs_completed": 20,
             "periodic_eval_results": [],
             "stopped_early": False,
@@ -242,9 +251,12 @@ def test_run_unet_thickness_experiment_builds_periodic_eval_and_stops_against_re
         return {
             "train_loss": 0.5,
             "device": "cpu",
+            "should_use_mps": False,
             "optimization_steps": 3,
             "training_examples": 1,
             "curriculum_final_rollout_horizon": 1,
+            "epoch_length_seconds": 1.0,
+            "epoch_length_seconds_per_epoch": [1.0] * 5,
             "epochs_completed": 5,
             "periodic_eval_results": [eval_result],
             "stopped_early": True,
@@ -333,9 +345,12 @@ def test_run_unet_thickness_experiment_uses_checkpoint_decay_margin_schedule(mon
         return {
             "train_loss": 0.5,
             "device": "cpu",
+            "should_use_mps": False,
             "optimization_steps": 3,
             "training_examples": 1,
             "curriculum_final_rollout_horizon": 1,
+            "epoch_length_seconds": 1.0,
+            "epoch_length_seconds_per_epoch": [1.0] * 15,
             "epochs_completed": 15,
             "periodic_eval_results": [eval_epoch5, eval_epoch10, eval_epoch15],
             "stopped_early": False,

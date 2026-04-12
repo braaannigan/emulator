@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from datetime import datetime
 
 import numpy as np
 import torch
@@ -66,9 +67,15 @@ def test_train_unet_model_writes_training_history(tmp_path: Path):
 
     history = json.loads(config.training_history_path.read_text(encoding="utf-8"))
     assert history["status"] == "completed"
+    assert history["hypothesis"] is None
     assert history["epochs_completed"] == 2
     assert history["epochs_total"] == 2
     assert len(history["epoch_train_losses"]) == 2
+    assert isinstance(history["updated_at"], str)
+    datetime.fromisoformat(history["updated_at"])
+    assert isinstance(history["should_use_mps"], bool)
+    assert isinstance(history["epoch_length_seconds"], float)
+    assert len(history["epoch_length_seconds_per_epoch"]) == 2
 
 
 def test_train_unet_model_supports_stabilization_options(tmp_path: Path):
@@ -104,6 +111,7 @@ def test_train_unet_model_supports_stabilization_options(tmp_path: Path):
     assert train_info["curriculum_final_rollout_horizon"] == 2
     history = json.loads(config.training_history_path.read_text(encoding="utf-8"))
     assert history["status"] == "completed"
+    assert len(history["epoch_length_seconds_per_epoch"]) == 2
 
 
 def test_train_unet_model_supports_multistep_operator(tmp_path: Path):
@@ -139,6 +147,7 @@ def test_train_unet_model_supports_multistep_operator(tmp_path: Path):
     assert train_info["curriculum_final_rollout_horizon"] == 4
     history = json.loads(config.training_history_path.read_text(encoding="utf-8"))
     assert history["status"] == "completed"
+    assert len(history["epoch_length_seconds_per_epoch"]) == 1
 
 
 def test_train_unet_model_records_periodic_eval_results_and_stops_early(tmp_path: Path):
@@ -180,5 +189,7 @@ def test_train_unet_model_records_periodic_eval_results_and_stops_early(tmp_path
     assert history["stopped_early"] is True
     assert history["stop_reason"] == "unit-test threshold crossed"
     assert [entry["epoch"] for entry in history["periodic_eval_results"]] == [2, 4]
+    assert len(history["epoch_length_seconds_per_epoch"]) == 4
     assert train_info["epochs_completed"] == 4
     assert train_info["stopped_early"] is True
+    assert isinstance(train_info["should_use_mps"], bool)

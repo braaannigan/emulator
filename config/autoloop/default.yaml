@@ -1,0 +1,48 @@
+base_config_path: config/emulator/unet_thickness_shifting_wind_2layer_window250_convnext_multistep2_dilated_bilinear_addskip_lr3p8e4_wd1p8e5_latecurr_residual_skydiscover.yaml
+experiment_family: double_gyre_shifting_wind_2layer
+experiment_log_path: data/interim/experiment_logs/double_gyre_shifting_wind_2layer.jsonl
+experiment_compact_path: data/interim/experiment_logs/double_gyre_shifting_wind_2layer_compact.md
+legacy_experiment_markdown_path: experiments_double_gyre_shifting_wind_2layer.md
+python_executable: .venv/bin/python
+output_root: data/interim/autoloop/unet
+
+llm:
+  env_var_name: OPENROUTER_OpenAICodex53
+  model_name: openai/gpt-5.3-codex
+  api_base: https://openrouter.ai/api/v1
+  temperature: 0.3
+  max_tokens: 8000
+  timeout_seconds: 180
+  max_total_calls: 8
+
+batch:
+  max_hypotheses: 8
+  max_total_train_runs: 12
+  max_total_llm_calls: 8
+  max_total_patch_calls: 8
+  sequential: true
+  allow_code_patches: true
+  stop_after_generation: false
+
+patching:
+  max_patch_attempts_per_hypothesis: 2
+  max_repair_attempts_per_patch: 2
+
+training:
+  require_benchmark_path: true
+  require_preflight_tests: true
+  preflight_test_paths:
+    - test/unit/test_unet_thickness_config.py
+    - test/unit/test_unet_thickness_training.py
+    - test/unit/test_unet_thickness_pipeline.py
+
+promotion:
+  primary_metric: eval_mse_mean
+  maximize: false
+  must_beat_incumbent_by: 0.0
+
+evaluation:
+  competitive_within_ratio: 0.2
+  max_total_calls: 2
+  final_step_heatmap_filename: final_step_heatmap.png
+  evaluator_payload_filename: evaluator_payload.json

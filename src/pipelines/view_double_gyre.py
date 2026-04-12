@@ -19,6 +19,7 @@ from src.viewer.emulator_viewer import (
     open_rollout_dataset,
     rollout_color_limits,
 )
+from src.viewer.autoloop_viewer import load_autonomous_batch_details, list_autonomous_batches
 
 
 def configure_app(st_module=st) -> None:
@@ -159,13 +160,78 @@ def render_emulator_evaluation_page(st_module=st) -> None:
         dataset.close()
 
 
+def render_autonomous_loop_page(st_module=st) -> None:
+    batches = list_autonomous_batches()
+    if not batches:
+        st_module.warning("No autonomous loop batches found under data/interim/autoloop/unet.")
+        st_module.stop()
+
+    selected_batch = st_module.sidebar.selectbox(
+        "Autonomous Batch",
+        batches,
+        format_func=lambda batch: f"{batch.batch_id} / {batch.phase} / candidates={batch.candidate_count}",
+    )
+    details = load_autonomous_batch_details(selected_batch.ledger_path)
+    st_module.caption(
+        f"Batch `{selected_batch.batch_id}` phase `{selected_batch.phase}` with "
+        f"{selected_batch.candidate_count} candidates and {selected_batch.screened_out_count} screened-out proposals."
+    )
+
+    batch_rows = [
+        {
+            "batch_id": batch.batch_id,
+            "phase": batch.phase,
+            "updated_at": batch.updated_at,
+            "llm_calls_used": batch.llm_calls_used,
+            "candidate_count": batch.candidate_count,
+            "completed_count": batch.completed_count,
+            "screened_out_count": batch.screened_out_count,
+            "best_eval_mse_mean": batch.best_eval_mse_mean,
+            "failure_reason": batch.failure_reason,
+        }
+        for batch in batches
+    ]
+    st_module.subheader("Autonomous Batches")
+    st_module.dataframe(batch_rows, use_container_width=True)
+
+    candidate_rows = [
+        {
+            "experiment_id": candidate.get("experiment_id"),
+            "status": candidate.get("status"),
+            "eval_mse_mean": candidate.get("eval_mse_mean"),
+            "stop_reason": candidate.get("stop_reason"),
+            "started_at": candidate.get("started_at"),
+            "finished_at": candidate.get("finished_at"),
+            "hypothesis": candidate.get("hypothesis"),
+        }
+        for candidate in details.get("candidates", [])
+        if isinstance(candidate, dict)
+    ]
+    st_module.subheader("Iteration Results")
+    if candidate_rows:
+        st_module.dataframe(candidate_rows, use_container_width=True)
+    else:
+        st_module.info("No candidate iterations recorded for this batch yet.")
+
+    if details.get("failure_reason") is not None:
+        st_module.subheader("Failure")
+        st_module.json(
+            {
+                "failure_reason": details.get("failure_reason"),
+                "failure_details": details.get("failure_details"),
+            }
+        )
+
+
 def main(st_module=st) -> None:
     configure_app(st_module)
-    page = st_module.sidebar.radio("Page", ["Double Gyre", "Emulator Evaluation"])
+    page = st_module.sidebar.radio("Page", ["Double Gyre", "Emulator Evaluation", "Autonomous Loop"])
     if page == "Double Gyre":
         render_double_gyre_page(st_module)
-    else:
+    elif page == "Emulator Evaluation":
         render_emulator_evaluation_page(st_module)
+    else:
+        render_autonomous_loop_page(st_module)
 
 
 if __name__ == "__main__":

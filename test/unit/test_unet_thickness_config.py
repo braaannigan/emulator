@@ -5,6 +5,7 @@ def test_load_unet_thickness_config_reads_architecture_fields():
     config = load_unet_thickness_config("config/emulator/unet_thickness.yaml")
 
     assert config.state_fields == ("layer_thickness",)
+    assert config.hypothesis is None
     assert config.hidden_channels == 16
     assert config.num_levels == 2
     assert config.kernel_size == 3
