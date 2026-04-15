@@ -11,6 +11,13 @@ For the current phase:
 - primary evaluation: autoregressive rollout
 - primary metric: layer-thickness mean squared error over the eval rollout
 
+## Current Learnings To Carry Forward
+
+- boundary reflections that grow and propagate inward are a first-order failure mode and must be treated as seriously as `eval_mse_mean`
+- strong early-epoch behavior can still fail at later periodic checks; evaluate full rollout behavior, not only first periodic wins
+- seed-local changes are currently higher-yield than broad architecture jumps for the active `current_plus_delta` line
+- tuning experiments should stay narrow and interpretable, with a clear changed-keys diff from the seed/incumbent
+
 ## Experiment Context
 
 The active generator experiment is part of the research context and must be explicit.
@@ -101,6 +108,22 @@ Only use it when the user gives an explicit instruction such as:
 
 If the user does not explicitly request this mode, prefer the normal research loop above, which should bias toward exploration, methodology, and interpretable experimental changes.
 
+## Alternative Mode: Automated Search (SkyDiscover)
+
+This mode is also off by default.
+
+Only use it when the user gives an explicit instruction such as:
+- “run skydisc”
+- “start SkyDiscover”
+- “run automated search”
+
+If the user does not explicitly request this mode, do not run SkyDiscover and do not launch autonomous discovery loops.
+
+When SkyDiscover is requested:
+- keep candidates close to the current seed unless the user asks for broad exploration
+- prefer at most `2` changed parameters per candidate in local-tuning phases
+- record candidate-specific overrides so each run is interpretable
+
 ### Purpose
 
 Use this mode when the goal is no longer to explore qualitatively different emulator ideas, but to take the current best approach for the active generator experiment and improve it through focused parameter tuning.
@@ -176,6 +199,7 @@ If several consecutive experiments are only tuning runs, pause and consider whet
 - prefer simple baselines first
 - optimize for clear evaluation before optimizing for raw model quality
 - the primary objective is rollout behavior, not just next-step prediction
+- reject candidates with materially worse boundary artifacts even when mean MSE is marginally better
 - use train-only normalization statistics
 - keep experiment outputs reproducible and timestamped
 - every architecture or training change should have pytest coverage in the affected code path

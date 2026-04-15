@@ -159,6 +159,61 @@ def training_loss_figure(history: dict[str, object]) -> go.Figure:
     return figure
 
 
+def eval_loss_figure(history: dict[str, object]) -> go.Figure:
+    periodic_results = history.get("periodic_eval_results", [])
+    rows = periodic_results if isinstance(periodic_results, list) else []
+    eval_mse = [
+        float(row.get("eval_mse_mean"))
+        for row in rows
+        if isinstance(row, dict) and row.get("eval_mse_mean") is not None and row.get("epoch") is not None
+    ]
+    reference_eval_mse = [
+        float(row.get("reference_eval_mse_mean"))
+        for row in rows
+        if isinstance(row, dict) and row.get("reference_eval_mse_mean") is not None and row.get("epoch") is not None
+    ]
+    eval_epochs = [
+        int(row.get("epoch"))
+        for row in rows
+        if isinstance(row, dict) and row.get("eval_mse_mean") is not None and row.get("epoch") is not None
+    ]
+    reference_epochs = [
+        int(row.get("epoch"))
+        for row in rows
+        if isinstance(row, dict) and row.get("reference_eval_mse_mean") is not None and row.get("epoch") is not None
+    ]
+
+    data = []
+    if eval_mse:
+        data.append(
+            go.Scatter(
+                x=eval_epochs,
+                y=eval_mse,
+                mode="lines+markers",
+                name="eval_mse_mean",
+                line={"color": "#0f766e", "width": 3},
+            )
+        )
+    if reference_eval_mse:
+        data.append(
+            go.Scatter(
+                x=reference_epochs,
+                y=reference_eval_mse,
+                mode="lines+markers",
+                name="reference_eval_mse_mean",
+                line={"color": "#7c3aed", "width": 3},
+            )
+        )
+
+    figure = go.Figure(data=data)
+    figure.update_layout(
+        title="Eval Loss",
+        xaxis_title="epoch",
+        yaxis_title="mse",
+    )
+    return figure
+
+
 def summarize_autonomous_stage_events(batch_details: dict[str, object]) -> list[dict[str, object]]:
     stage_events = batch_details.get("stage_events", [])
     if not isinstance(stage_events, list):
@@ -236,10 +291,18 @@ def render_training_metrics_page(st_module=st) -> None:
                 "This run does not have an epoch-by-epoch history file. "
                 "The chart shows only the final recorded train loss from metrics.json."
             )
-        if losses:
-            st_module.plotly_chart(training_loss_figure(history), width="stretch")
-        else:
-            st_module.info("No training loss history is available for this run.")
+        train_col, eval_col = st_module.columns(2)
+        with train_col:
+            if losses:
+                st_module.plotly_chart(training_loss_figure(history), width="stretch")
+            else:
+                st_module.info("No training loss history is available for this run.")
+        with eval_col:
+            periodic_results = history.get("periodic_eval_results", [])
+            if isinstance(periodic_results, list) and any(isinstance(row, dict) for row in periodic_results):
+                st_module.plotly_chart(eval_loss_figure(history), width="stretch")
+            else:
+                st_module.info("No periodic eval history is available for this run.")
         st_module.subheader("Run Metadata")
         st_module.json(metadata)
 

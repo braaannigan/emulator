@@ -8,3 +8,4 @@ Canonical experiment registry:
 Current logs:
 - [`experiments_double_gyre.md`](/Users/liambrannigan/playModels/emulator/experiments_double_gyre.md)
 - [`experiments_double_gyre_shifting_wind.md`](/Users/liambrannigan/playModels/emulator/experiments_double_gyre_shifting_wind.md)
+- [`experiments_double_gyre_shifting_wind_2layer.md`](/Users/liambrannigan/playModels/emulator/experiments_double_gyre_shifting_wind_2layer.md)

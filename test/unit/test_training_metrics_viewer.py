@@ -8,6 +8,7 @@ from src.viewer.training_metrics_viewer import (
     TrainingMetricsRecord,
     INTERIM_EMULATOR_ROOT,
     build_run_metadata,
+    eval_loss_figure,
     format_updated_at,
     list_training_metric_runs,
     load_training_history,
@@ -272,3 +273,28 @@ def test_summarize_autonomous_candidate_states_extracts_candidate_rows():
             "stop_reason": None,
         }
     ]
+
+
+def test_eval_loss_figure_plots_eval_and_reference_series():
+    figure = eval_loss_figure(
+        {
+            "periodic_eval_results": [
+                {"epoch": 1, "eval_mse_mean": 1.2, "reference_eval_mse_mean": 2.4},
+                {"epoch": 2, "eval_mse_mean": 1.1, "reference_eval_mse_mean": 2.1},
+            ]
+        }
+    )
+
+    assert len(figure.data) == 2
+    assert figure.data[0].name == "eval_mse_mean"
+    assert list(figure.data[0].x) == [1, 2]
+    assert list(figure.data[0].y) == [1.2, 1.1]
+    assert figure.data[1].name == "reference_eval_mse_mean"
+    assert list(figure.data[1].x) == [1, 2]
+    assert list(figure.data[1].y) == [2.4, 2.1]
+
+
+def test_eval_loss_figure_handles_missing_periodic_eval_results():
+    figure = eval_loss_figure({})
+
+    assert len(figure.data) == 0

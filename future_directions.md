@@ -1,199 +1,141 @@
-# Future Directions
+# Future Directions: Model Design
 
-This note collects architectural directions that seem genuinely promising for the current `double_gyre_shifting_wind` emulator line. The aim is not to list every possible machine-learning idea, but to capture the changes that could plausibly move us into a new regime beyond incremental U-Net tuning.
+This note focuses on model-design directions that can move the emulator beyond incremental hyperparameter tuning.
 
-The current incumbent is already a strong residual, multi-step, dilated ConvNeXt U-Net. That means the most interesting next steps are the ones that change the transition operator or the inductive bias, rather than simply making the existing network a bit wider or deeper.
+Recent experiments suggest the key bottleneck is not only scalar error, but rollout behavior: boundary reflections strengthen over time and propagate inward. The next model iterations should therefore target both forecast skill and structural robustness.
 
-## 1. Conservative or Constraint-Aware Output Heads
+## 1. Boundary-Aware Update Operators
 
-The most physically grounded next step would be to make conservation structure more explicit.
+The strongest immediate design opportunity is to make boundary handling explicit.
 
-Instead of predicting the next state directly, the model could predict:
+Candidate designs:
 
-- fluxes
-- tendencies
-- or a constrained update that preserves integral quantities by construction
+- boundary mask channels injected at each encoder/decoder stage
+- boundary-conditioned skip gating (learned attenuation near edges)
+- masked or boundary-aware convolutions in early and late blocks
 
-For a shallow-water system, this is appealing because long-rollout drift is one of the main remaining problems. A conservative head could directly target that weakness rather than only hoping the network learns conservation implicitly.
+Why this matters:
 
-Why it is interesting:
+- directly targets the dominant observed artifact
+- gives the model an explicit mechanism instead of asking generic convs to infer boundary rules implicitly
 
-- attacks drift at the level of model structure
-- fits the PDE character of the problem
-- could improve long-horizon stability more than another optimizer sweep
+## 2. Flux-Form or Tendency-Form Prediction Heads
 
-## 2. Hybrid Spectral and Local Convolutions
+Instead of predicting next state directly, predict structured updates:
 
-The current model handles larger spatial scales through pooling and dilation. That works, but it is still fundamentally local.
+- fluxes with reconstruction of state increments
+- per-variable tendencies added to current state
+- constrained residual heads with stability-aware scaling
 
-A stronger alternative is a hybrid architecture that combines:
+Why this matters:
 
-- ordinary local convolutions for small-scale spatial structure
-- spectral or Fourier-style blocks for basin-scale organization
+- improves physical plausibility of updates
+- can reduce long-horizon drift and ringing from unconstrained direct mapping
 
-This could be useful because gyre adjustment and large-scale propagation are not purely local phenomena. A spectral pathway may capture domain-wide structure more naturally than only dilated convolutions.
+## 3. Transport-First Architectures
 
-Possible families:
+Current U-Net updates are purely image-to-image. A transport-aware structure may better match shallow-water dynamics.
 
-- Fourier Neural Operator style blocks
-- Adaptive Fourier Neural Operator style blocks
-- hybrid ConvNet plus FFT blocks
+Candidate designs:
 
-Why it is interesting:
+- two-stage block: learned advection/warp then correction
+- latent transport module conditioned on velocity channels
+- split branch for transport and source-term correction
 
-- gives the model a more natural mechanism for large-scale coupling
-- may improve coherence of basin-scale responses
-- is a clearer architectural leap than another ConvNeXt variant
+Why this matters:
 
-## 3. Advection-Aware or Semi-Lagrangian Updates
+- aligns with dynamics structure ("move then adjust")
+- may improve phase and propagation fidelity
 
-One limitation of a standard U-Net is that it predicts the future entirely in an Eulerian, image-to-image fashion.
+## 4. Multi-Scale Global-Local Coupling
 
-A more flow-aware alternative is to introduce an explicit learned transport mechanism, for example:
+Boundary and basin-scale coherence can be under-modeled by local convolutions alone.
 
-- warp latent features along a learned velocity field
-- advect the current state or hidden state before correction
-- separate transport and correction into two stages
+Candidate designs:
 
-This is attractive because shallow-water dynamics have a strong transport component. The model may benefit from an inductive bias that says “move information first, then adjust it,” rather than learning both simultaneously in one generic convolutional operator.
+- hybrid local conv + spectral block at bottleneck
+- low-frequency global pathway fused with local pathway
+- coarse-grid correction branch for large-scale structure
 
-Why it is interesting:
+Why this matters:
 
-- matches the structure of the dynamics more closely
-- may improve phase accuracy and pattern propagation
-- could reduce the burden on the network to learn advection implicitly
+- improves long-range coupling
+- can stabilize large-scale modes without over-smoothing local detail
 
-## 4. Multi-Branch Physics Decomposition
+## 5. Structured Cross-Variable Coupling
 
-Another promising direction is to decompose the update into several interacting branches rather than using one monolithic trunk.
+`h`, `u`, and `v` are currently coupled mostly through a shared trunk. More explicit coupling may improve coherence.
 
-For example:
+Candidate designs:
 
-- one branch for transport and advection
-- one branch for forcing response
-- one branch for pressure-gradient or gravity-wave adjustment
+- cross-variable interaction blocks (thickness<->momentum exchange layers)
+- separate variable encoders with learned coupling modules
+- variable-specific heads with shared physical interaction trunk
 
-The outputs of these branches could then be combined into the final residual update.
+Why this matters:
 
-This would not make the model fully interpretable in a strict physical sense, but it could encourage a cleaner internal representation of the different mechanisms driving the shallow-water evolution.
+- encourages physically consistent joint updates
+- may reduce channel-specific artifacts that later amplify in rollout
 
-Why it is interesting:
+## 6. Stability-Governed Recurrence
 
-- imposes useful structure on the forecast operator
-- may improve interpretability of what the model is doing
-- could help separate fast and slow components of the response
+Current state history is short and explicit (`state_history=2`). Recurrence can provide controlled temporal memory.
 
-## 5. Recurrent Latent Memory
+Candidate designs:
 
-The current model uses `state_history = 2`, which gives it only a short explicit memory through raw input frames.
+- ConvGRU latent memory inside decoder or bottleneck
+- gated residual recurrence with norm constraints
+- memory branch used only for correction term, not full state synthesis
 
-A stronger alternative is to give the emulator an evolving latent memory state, for example with:
+Why this matters:
 
-- ConvGRU-style recurrence
-- latent state-space recurrence
-- recurrent hidden states propagated across rollout steps
+- improves temporal consistency
+- can reduce late-rollout degradation after initially good short-horizon behavior
 
-This may help the emulator retain information about recent history without forcing all memory into the raw state inputs.
+## 7. Curriculum Learning as a Design Lever
 
-Why it is interesting:
+Curriculum strategy should be treated as part of model design, not only training configuration.
 
-- gives a more flexible temporal memory than simply stacking frames
-- may help longer autoregressive rollouts
-- could support better separation between observed state and latent tendency information
+Candidate curriculum families:
 
-## 6. Multi-Timescale Models
+- rollout-horizon curriculum:
+  start with short horizons, increase to longer autoregressive windows
+- scheduled-sampling curriculum:
+  increase model-input replacement probability over training
+- region-aware curriculum:
+  weight boundary bands earlier, then rebalance toward full-domain accuracy
+- error-triggered adaptive curriculum:
+  advance horizon only when intermediate stability/quality criteria are met
 
-The shallow-water system contains processes with different timescales. Some responses are relatively fast, while gyre adjustment unfolds more slowly.
+Why this matters:
 
-One possible architectural response is to build a model with separate components for:
+- directly targets the "good early, unstable late" behavior seen in multiple runs
+- can improve robustness without forcing immediate architectural complexity
+- creates a cleaner path to evaluate architecture changes under consistent stability pressure
 
-- fast adjustments
-- slower background evolution
+## Priority Design Roadmap
 
-These could be combined additively or hierarchically.
+## Near-Term (highest leverage)
 
-This is especially relevant because one of the hard problems in emulator design is maintaining both short-term responsiveness and long-term stability.
+1. Boundary-aware update operators
+2. Flux/tendency-form head
+3. Curriculum-learning variants focused on rollout stability
+4. Transport-first split block
 
-Why it is interesting:
+## Mid-Term
 
-- reflects the temporal structure of the dynamics
-- may reduce the tension between immediate accuracy and long-rollout behavior
-- could be implemented either in the state update or in a latent representation
+1. Structured cross-variable coupling
+2. Multi-scale global-local coupling
 
-## 7. More Structured Cross-Variable Coupling
+## Later
 
-The current incumbent already predicts `layer_thickness`, `u`, and `v` jointly, which is important. But the coupling between these variables is still largely implicit inside a generic shared backbone.
+1. Stability-governed recurrence integrated with best prior design
 
-A more structured alternative would be to include explicit coupling modules between:
+## Evaluation Principle for New Designs
 
-- thickness and momentum channels
-- transport-related and pressure-related features
+Any design change should be judged on both:
 
-This might help the model learn more coherent joint updates across the prognostic state.
+- forecast error (`eval_mse_mean`, horizon profile)
+- rollout quality (boundary reflection growth, interior contamination, visual coherence)
 
-Why it is interesting:
-
-- strengthens the coupling prior without changing the data regime
-- may improve physical consistency between `h`, `u`, and `v`
-- is less radical than a full new operator family but more meaningful than simple width changes
-
-## 8. Learned Correction on Top of a Cheap Numerical Core
-
-This is perhaps the most physically appealing “big step” direction.
-
-Instead of learning the full transition map from scratch, use:
-
-- a simple coarse or approximate shallow-water update as the baseline
-- a neural network to predict only the correction term
-
-This turns the emulator into an ML-augmented numerical model rather than a pure black-box surrogate.
-
-Why it is interesting:
-
-- leverages known physics directly
-- may improve stability and extrapolation
-- could reduce the amount of learning needed for basic transport and wave behavior
-
-For this project, this may be the most natural route if the goal shifts from pure surrogate performance toward more physically trustworthy long rollouts.
-
-## 9. Boundary-Aware Convolutions
-
-This is less important than in a global ocean model, but still worth noting.
-
-Standard padding is often an unexamined weakness in PDE surrogate models. A boundary-aware treatment could help if the model is using unrealistic edge behavior near walls or boundaries.
-
-Possible approaches:
-
-- masked convolutions
-- custom padding rules
-- separate boundary channels or boundary-condition features
-
-Why it is interesting:
-
-- specifically targets a common convolutional failure mode
-- may matter if wall effects are important in the learned rollouts
-
-## Priority Ranking
-
-If only a few of these ideas are worth pursuing soon, the most promising shortlist is:
-
-1. Conservative or flux-form output heads
-2. Hybrid spectral plus local blocks
-3. Advection-aware or semi-Lagrangian transport modules
-4. Recurrent latent memory
-5. Learned correction on top of a simple numerical baseline
-
-These directions are more likely to produce a real step-change than another round of depth, width, or optimizer tuning.
-
-## Working Principle
-
-The key lesson from the current research cycle is that the project has probably already found the right broad architecture family for the present benchmark. That means the next useful experiments should not be random novelty.
-
-They should target one of the following weaknesses explicitly:
-
-- long-horizon drift
-- imperfect large-scale propagation
-- limited temporal memory
-- insufficient physical structure in the update rule
-
-Any future architectural experiment should therefore be justified in terms of which of those weaknesses it is trying to address.
+A model design should be considered a forward step if it meaningfully improves rollout behavior while staying competitive on error, even if it is not the absolute lowest MSE candidate.
