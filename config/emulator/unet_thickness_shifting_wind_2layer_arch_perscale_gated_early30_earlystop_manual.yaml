@@ -1,0 +1,48 @@
+source_data_root: data/raw/double_gyre_shifting_wind_2layer/generator
+source_experiment_id: 20260408T071500-period40d-duration5000d-2layer
+source_output_filename: double_gyre.nc
+hypothesis: "Combining per-scale forcing fusion with gated skip connections may improve both boundary stability and forcing response."
+field_name: layer_thickness
+state_fields:
+  - layer_thickness
+  - zonal_velocity_centered
+  - meridional_velocity_centered
+train_fraction: 0.8
+batch_size: 2
+epochs: 30
+learning_rate: 3.8e-4
+weight_decay: 1.8e-5
+hidden_channels: 24
+num_levels: 3
+kernel_size: 5
+block_type: convnext
+stage_depth: 2
+dilation_cycle: 4
+norm_type: groupnorm
+state_history: 2
+output_steps: 2
+forcing_mode: wind_current
+fusion_mode: per_scale
+skip_fusion_mode: gated
+upsample_mode: bilinear
+residual_connection: true
+residual_step_scale: 0.9
+curriculum_rollout_steps:
+  - 2
+  - 4
+curriculum_transition_epochs:
+  - 0
+  - 10
+scheduled_sampling_max_prob: 0.0
+high_frequency_loss_weight: 0.0
+early_stopping_eval_interval_epochs: 5
+early_stopping_best_metrics_path: data/raw/double_gyre_shifting_wind_2layer/emulator/unet_thickness/20260415T075100-dgsw2l-bestseed-curriculum-early-30ep/metrics.json
+early_stopping_margin_start: 0.4
+early_stopping_margin_decay: 0.8
+train_start_day: 100
+eval_window_days: 250
+random_seed: 7
+animation_fps: 0
+raw_output_root: data/raw/double_gyre_shifting_wind_2layer/emulator/unet_thickness
+interim_output_root: data/interim/emulator/unet_thickness
+

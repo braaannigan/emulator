@@ -4,6 +4,32 @@ This note focuses on model-design directions that can move the emulator beyond i
 
 Recent experiments suggest the key bottleneck is not only scalar error, but rollout behavior: boundary reflections strengthen over time and propagate inward. The next model iterations should therefore target both forecast skill and structural robustness.
 
+## Latest Evidence (2026-04-15 Manual Curriculum Batch)
+
+Most recent `double_gyre_shifting_wind_2layer` evidence:
+
+- best run: `20260415T075100-dgsw2l-bestseed-curriculum-early-30ep` with `eval_mse_mean = 37.8524`
+- second-best: `20260415T074300-dgsw2l-bestseed-curriculum-ss01` with `eval_mse_mean = 45.1809`
+- delayed and three-stage curricula underperformed badly (`eval_mse_mean ~= 89.14` and `109.70`) and repeatedly triggered early-stop thresholds
+
+Implication for next wave:
+
+- keep the strong `early` curriculum as the default training scaffold
+- explore higher-upside architecture/mechanism changes on top of that scaffold, rather than further narrow optimizer-only tuning
+
+## Latest Evidence (2026-04-16 Architecture Batch)
+
+Architecture-focused follow-up on the same `early + 30 epoch` scaffold did not surpass the incumbent:
+
+- best architecture challenger (`bottleneck forcing + gated skip + kernel7/dilation2`) reached `eval_mse_mean = 45.5575`, still worse than `37.8524`
+- other architecture variants regressed materially, with two failing at epoch `5` (`eval_mse_mean > 200`)
+- boundary artifacts are still present in rollout inspection, including the incumbent final-step heatmap
+
+Implication for next wave:
+
+- continue architecture exploration, but narrow to one mechanism change at a time around the strongest challenger line (`bottleneck forcing` path)
+- prioritize explicit boundary-aware operators and artifact-focused evaluation signals, not MSE-only selection
+
 ## 1. Boundary-Aware Update Operators
 
 The strongest immediate design opportunity is to make boundary handling explicit.
