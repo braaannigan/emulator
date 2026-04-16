@@ -41,6 +41,16 @@ def _trim_initial_spinup(
     return frames[first_index:], time_days[first_index:]
 
 
+def _state_input_channels(prognostic_channels: int, config: UnetThicknessConfig) -> int:
+    if config.state_input_mode == "history":
+        return prognostic_channels * config.state_history
+    if config.state_input_mode == "current_plus_residual":
+        return prognostic_channels * 2
+    if config.state_input_mode == "residual_only":
+        return prognostic_channels
+    raise ValueError(f"Unsupported state_input_mode: {config.state_input_mode}")
+
+
 def _first_visualization_channel(
     netcdf_path: str,
     state_fields: tuple[str, ...],
@@ -152,14 +162,25 @@ def _build_periodic_eval_callback(
             )
 
     def _callback(epoch: int) -> dict[str, object]:
-        rollout = autoregressive_rollout_with_forcing(
-            model,
-            split.eval_frames,
-            config.state_history,
-            eval_forcing,
-            standardizer,
-            device,
-        )
+        if config.state_input_mode == "history":
+            rollout = autoregressive_rollout_with_forcing(
+                model,
+                split.eval_frames,
+                config.state_history,
+                eval_forcing,
+                standardizer,
+                device,
+            )
+        else:
+            rollout = autoregressive_rollout_with_forcing(
+                model,
+                split.eval_frames,
+                config.state_history,
+                eval_forcing,
+                standardizer,
+                device,
+                state_input_mode=config.state_input_mode,
+            )
         evaluation = _evaluate_rollout(config, split, rollout)
         per_timestep_mse = evaluation["per_timestep_mse"]
         eval_mse_mean = float(per_timestep_mse.mean())
@@ -228,9 +249,11 @@ def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str
     )
     eval_forcing = None if normalized_forcing_features is None else normalized_forcing_features[split.train_frames.shape[0] :]
     prognostic_channels = int(split.train_frames.shape[1])
+    if config.state_input_mode == "residual_only" and config.residual_connection:
+        raise ValueError("state_input_mode=residual_only requires residual_connection=false.")
 
     model = UnetThicknessModel(
-        input_channels=(prognostic_channels * config.state_history) + forcing_channel_count(config.forcing_mode),
+        input_channels=_state_input_channels(prognostic_channels, config) + forcing_channel_count(config.forcing_mode),
         hidden_channels=config.hidden_channels,
         num_levels=config.num_levels,
         kernel_size=config.kernel_size,
@@ -238,7 +261,7 @@ def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str
         dilation_cycle=config.dilation_cycle,
         norm_type=config.norm_type,
         block_type=config.block_type,
-        state_channels=prognostic_channels * config.state_history,
+        state_channels=_state_input_channels(prognostic_channels, config),
         output_steps=config.output_steps,
         forcing_channels=forcing_channel_count(config.forcing_mode),
         fusion_mode=config.fusion_mode,
@@ -266,14 +289,25 @@ def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str
     )
     device = torch.device(train_info["device"])
 
-    rollout = autoregressive_rollout_with_forcing(
-        model,
-        split.eval_frames,
-        config.state_history,
-        eval_forcing,
-        standardizer,
-        device,
-    )
+    if config.state_input_mode == "history":
+        rollout = autoregressive_rollout_with_forcing(
+            model,
+            split.eval_frames,
+            config.state_history,
+            eval_forcing,
+            standardizer,
+            device,
+        )
+    else:
+        rollout = autoregressive_rollout_with_forcing(
+            model,
+            split.eval_frames,
+            config.state_history,
+            eval_forcing,
+            standardizer,
+            device,
+            state_input_mode=config.state_input_mode,
+        )
     evaluation = _evaluate_rollout(config, split, rollout)
     field_indices = evaluation["field_indices"]
     truth = evaluation["truth"]
@@ -357,6 +391,7 @@ def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str
         "dilation_cycle": config.dilation_cycle,
         "norm_type": config.norm_type,
         "state_history": config.state_history,
+        "state_input_mode": config.state_input_mode,
         "output_steps": config.output_steps,
         "state_fields": list(config.state_fields),
         "evaluated_field_channel_count": len(field_indices),

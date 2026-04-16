@@ -42,6 +42,42 @@ def test_assemble_model_inputs_flattens_history_then_appends_forcing():
     assert assembled[:, :, 0, 0].tolist() == [[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]]
 
 
+def test_assemble_model_inputs_supports_current_plus_residual_mode():
+    state_history_tensor = torch.tensor(
+        [
+            [
+                [[[10.0]], [[20.0]]],
+                [[[7.0]], [[14.0]]],
+            ]
+        ],
+        dtype=torch.float32,
+    )
+    forcing_tensor = torch.tensor([[[[1.0]]]], dtype=torch.float32)
+
+    assembled = _assemble_model_inputs(state_history_tensor, forcing_tensor, state_input_mode="current_plus_residual")
+
+    assert assembled.shape == (1, 5, 1, 1)
+    assert assembled[:, :, 0, 0].tolist() == [[10.0, 20.0, 3.0, 6.0, 1.0]]
+
+
+def test_assemble_model_inputs_supports_residual_only_mode():
+    state_history_tensor = torch.tensor(
+        [
+            [
+                [[[10.0]], [[20.0]]],
+                [[[7.0]], [[14.0]]],
+            ]
+        ],
+        dtype=torch.float32,
+    )
+    forcing_tensor = torch.tensor([[[[1.0]], [[2.0]]]], dtype=torch.float32)
+
+    assembled = _assemble_model_inputs(state_history_tensor, forcing_tensor, state_input_mode="residual_only")
+
+    assert assembled.shape == (1, 4, 1, 1)
+    assert assembled[:, :, 0, 0].tolist() == [[3.0, 6.0, 1.0, 2.0]]
+
+
 def test_train_unet_model_writes_training_history(tmp_path: Path):
     config = load_unet_thickness_config("config/emulator/unet_thickness.yaml").with_overrides(
         interim_output_root=tmp_path / "interim",

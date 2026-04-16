@@ -30,6 +30,7 @@ class UnetThicknessConfig:
     dilation_cycle: int
     norm_type: str
     state_history: int
+    state_input_mode: str
     output_steps: int
     forcing_mode: str
     fusion_mode: str
@@ -139,6 +140,7 @@ def load_unet_thickness_config(path: str | Path) -> UnetThicknessConfig:
         dilation_cycle=int(payload.get("dilation_cycle", 1)),
         norm_type=str(payload.get("norm_type", "groupnorm")),
         state_history=int(payload.get("state_history", 1)),
+        state_input_mode=str(payload.get("state_input_mode", "history")),
         output_steps=int(payload.get("output_steps", 1)),
         forcing_mode=str(payload.get("forcing_mode", "none")),
         fusion_mode=str(payload.get("fusion_mode", "input")),

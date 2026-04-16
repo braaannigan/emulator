@@ -391,6 +391,7 @@ def autoregressive_rollout_with_forcing(
     forcing_features: np.ndarray | None,
     standardizer: Standardizer | ChannelStandardizer,
     device: torch.device,
+    state_input_mode: str = "history",
 ) -> np.ndarray:
     if eval_frames.shape[0] < 2:
         raise ValueError("Evaluation segment must contain at least two timesteps.")
@@ -408,9 +409,23 @@ def autoregressive_rollout_with_forcing(
         index = 0
         while index < eval_frames.shape[0] - 1:
             model_inputs = build_input_channels(
-                list(state_buffer),
+                (
+                    list(state_buffer)
+                    if state_input_mode == "history"
+                    else (
+                        [state_buffer[0], state_buffer[0] - (state_buffer[1] if len(state_buffer) > 1 else state_buffer[0])]
+                        if state_input_mode == "current_plus_residual"
+                        else (
+                            [state_buffer[0] - (state_buffer[1] if len(state_buffer) > 1 else state_buffer[0])]
+                            if state_input_mode == "residual_only"
+                            else None
+                        )
+                    )
+                ),
                 None if forcing_features is None else forcing_features[index],
             )
+            if model_inputs is None:
+                raise ValueError(f"Unsupported state_input_mode: {state_input_mode}")
             input_tensor = torch.from_numpy(model_inputs).unsqueeze(0).to(device)
             prediction = model(input_tensor).squeeze(0).cpu().numpy()
             if prediction.ndim == 3:

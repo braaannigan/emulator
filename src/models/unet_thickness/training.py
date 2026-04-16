@@ -67,13 +67,25 @@ def _assemble_state_history(
 def _assemble_model_inputs(
     state_history_tensor: torch.Tensor,
     current_forcing_features: torch.Tensor | None,
+    state_input_mode: str = "history",
 ) -> torch.Tensor:
+    if state_input_mode not in {"history", "current_plus_residual", "residual_only"}:
+        raise ValueError(f"Unsupported state_input_mode: {state_input_mode}")
+
     if state_history_tensor.device.type == "cpu":
         inputs: list[np.ndarray] = []
         state_history_np = state_history_tensor.detach().numpy()
         current_forcing_np = None if current_forcing_features is None else current_forcing_features.detach().numpy()
         for batch_index in range(state_history_np.shape[0]):
-            state_frames = [state_history_np[batch_index, index] for index in range(state_history_np.shape[1])]
+            current = state_history_np[batch_index, 0]
+            previous = state_history_np[batch_index, 1] if state_history_np.shape[1] > 1 else current
+            residual = current - previous
+            if state_input_mode == "history":
+                state_frames = [state_history_np[batch_index, index] for index in range(state_history_np.shape[1])]
+            elif state_input_mode == "current_plus_residual":
+                state_frames = [current, residual]
+            else:
+                state_frames = [residual]
             inputs.append(
                 build_input_channels(
                     state_frames,
@@ -83,7 +95,16 @@ def _assemble_model_inputs(
         return torch.from_numpy(np.stack(inputs, axis=0))
 
     batch_size, history_length, channel_count, height, width = state_history_tensor.shape
-    state_inputs = state_history_tensor.reshape(batch_size, history_length * channel_count, height, width)
+    current = state_history_tensor[:, 0]
+    previous = state_history_tensor[:, 1] if history_length > 1 else current
+    residual = current - previous
+    if state_input_mode == "history":
+        state_inputs = state_history_tensor.reshape(batch_size, history_length * channel_count, height, width)
+    elif state_input_mode == "current_plus_residual":
+        state_inputs = torch.cat([current, residual], dim=1)
+    else:
+        state_inputs = residual
+
     if current_forcing_features is None:
         return state_inputs
     return torch.cat([state_inputs, current_forcing_features], dim=1)
@@ -194,6 +215,7 @@ def train_unet_model(
                 model_inputs = _assemble_model_inputs(
                     state_history_tensor,
                     current_forcing,
+                    state_input_mode=config.state_input_mode,
                 )
                 predictions = model(model_inputs)
                 prediction_steps = _prediction_sequence(predictions)

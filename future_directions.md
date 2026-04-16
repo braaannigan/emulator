@@ -30,6 +30,31 @@ Implication for next wave:
 - continue architecture exploration, but narrow to one mechanism change at a time around the strongest challenger line (`bottleneck forcing` path)
 - prioritize explicit boundary-aware operators and artifact-focused evaluation signals, not MSE-only selection
 
+## Latest Evidence (2026-04-16 Input-Ablation New Best)
+
+Input-ablation runs on branch `2026-04-16-dgsw2l-input-ablation` produced a new best:
+
+- best run: `20260416T080000-dgsw2l-input-current-plus-residual` with `eval_mse_mean = 28.2273`
+- residual-only and extra-channel variants regressed heavily (`eval_mse_mean = 174` to `315`, early-stopped)
+
+Residual diagnostics for the new best (final step, truth vs rollout residual maps):
+
+- same time window is confirmed for both fields (`t = 4270.0068 -> 4277.0068`, `dt = 7.0 days`)
+- state field agreement is strong (`thickness corr = 0.9865`, normalized RMSE `~0.171`)
+- residual field agreement is much weaker (`residual corr = 0.5666`, normalized RMSE `~0.866`)
+- rollout residual has positive mean bias (`0.1322`) while truth residual is near zero mean
+- domain-integrated residual drift is large in rollout (`sum ~2644.6`) vs near-zero truth (`sum ~0`)
+- rollout residual is spectrally rougher (`high/low spectral energy ratio ~0.0628`) than truth (`~0.0220`)
+- rollout residual gradients are less extreme (`max grad ~4.74`) than truth (`~6.90`), indicating smoother peaks but noisier mid/high-frequency texture
+- residual mismatch is not only a boundary-band issue in this run (boundary/interior absolute error ratio `< 1`), so the artifact is distributed and includes interior phase/amplitude errors
+
+Implication for next wave:
+
+- preserve the `current + residual + wind` input recipe as the reference baseline
+- add explicit residual-bias controls (zero-mean or integral-constrained residual heads)
+- target spectral/phase fidelity of residual updates, not only state MSE
+- evaluate residual quality directly in selection rules (bias, correlation, spectral ratio, boundary-vs-interior error)
+
 ## 1. Boundary-Aware Update Operators
 
 The strongest immediate design opportunity is to make boundary handling explicit.
@@ -52,11 +77,14 @@ Instead of predicting next state directly, predict structured updates:
 - fluxes with reconstruction of state increments
 - per-variable tendencies added to current state
 - constrained residual heads with stability-aware scaling
+- zero-mean residual projection per step (domain-integral correction)
+- learned global bias-correction head applied to residual tendency
 
 Why this matters:
 
 - improves physical plausibility of updates
 - can reduce long-horizon drift and ringing from unconstrained direct mapping
+- directly addresses the measured residual mean/integral drift in the current best run
 
 ## 3. Transport-First Architectures
 
