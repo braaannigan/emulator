@@ -25,6 +25,9 @@ def test_load_unet_thickness_config_reads_architecture_fields():
     assert config.curriculum_rollout_steps == (1,)
     assert config.curriculum_transition_epochs == (0,)
     assert config.scheduled_sampling_max_prob == 0.0
+    assert config.objective_mode == "state"
+    assert config.state_loss_weight == 1.0
+    assert config.residual_loss_weight == 1.0
     assert config.early_stopping_eval_interval_epochs == 0
     assert config.early_stopping_best_metrics_path is None
     assert config.early_stopping_margin_start is None

@@ -403,6 +403,9 @@ def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str
         "residual_step_scale": config.residual_step_scale,
         "scheduled_sampling_max_prob": config.scheduled_sampling_max_prob,
         "high_frequency_loss_weight": config.high_frequency_loss_weight,
+        "objective_mode": config.objective_mode,
+        "state_loss_weight": config.state_loss_weight,
+        "residual_loss_weight": config.residual_loss_weight,
         "early_stopping_eval_interval_epochs": config.early_stopping_eval_interval_epochs,
         "early_stopping_best_metrics_path": None
         if config.early_stopping_best_metrics_path is None

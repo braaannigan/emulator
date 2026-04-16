@@ -124,6 +124,27 @@ def _prediction_sequence(predictions: torch.Tensor) -> tuple[torch.Tensor, ...]:
     raise ValueError(f"Unsupported prediction rank: {predictions.ndim}")
 
 
+def _step_objective_loss(
+    objective_mode: str,
+    loss_fn: nn.Module,
+    step_prediction: torch.Tensor,
+    targets: torch.Tensor,
+    current_state: torch.Tensor,
+    state_loss_weight: float,
+    residual_loss_weight: float,
+) -> torch.Tensor:
+    if objective_mode == "state":
+        return float(state_loss_weight) * loss_fn(step_prediction, targets)
+    predicted_residual = step_prediction - current_state
+    target_residual = targets - current_state
+    residual_loss = float(residual_loss_weight) * loss_fn(predicted_residual, target_residual)
+    if objective_mode == "residual":
+        return residual_loss
+    if objective_mode == "mixed":
+        return (float(state_loss_weight) * loss_fn(step_prediction, targets)) + residual_loss
+    raise ValueError(f"Unsupported objective_mode: {objective_mode}")
+
+
 PeriodicEvalCallback = Callable[[int], dict[str, object] | None]
 
 
@@ -182,6 +203,9 @@ def train_unet_model(
             "periodic_eval_results": periodic_eval_results,
             "stopped_early": stopped_early,
             "stop_reason": stop_reason,
+            "objective_mode": config.objective_mode,
+            "state_loss_weight": config.state_loss_weight,
+            "residual_loss_weight": config.residual_loss_weight,
         }
         config.training_history_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
@@ -223,7 +247,16 @@ def train_unet_model(
                 for prediction_step in range(steps_to_apply):
                     step_prediction = prediction_steps[prediction_step]
                     targets = frames_tensor.index_select(0, current_indices + prediction_step + 1)
-                    total_loss = total_loss + loss_fn(step_prediction, targets)
+                    current_state = state_history_tensor[:, 0]
+                    total_loss = total_loss + _step_objective_loss(
+                        objective_mode=config.objective_mode,
+                        loss_fn=loss_fn,
+                        step_prediction=step_prediction,
+                        targets=targets,
+                        current_state=current_state,
+                        state_loss_weight=config.state_loss_weight,
+                        residual_loss_weight=config.residual_loss_weight,
+                    )
                     if config.high_frequency_loss_weight > 0.0:
                         total_loss = total_loss + (config.high_frequency_loss_weight * _laplacian_energy(step_prediction))
                     next_state = step_prediction

@@ -42,6 +42,9 @@ class UnetThicknessConfig:
     curriculum_transition_epochs: tuple[int, ...]
     scheduled_sampling_max_prob: float
     high_frequency_loss_weight: float
+    objective_mode: str
+    state_loss_weight: float
+    residual_loss_weight: float
     early_stopping_eval_interval_epochs: int
     early_stopping_best_metrics_path: Path | None
     early_stopping_margin_start: float | None
@@ -152,6 +155,9 @@ def load_unet_thickness_config(path: str | Path) -> UnetThicknessConfig:
         curriculum_transition_epochs=tuple(int(value) for value in payload.get("curriculum_transition_epochs", [0])),
         scheduled_sampling_max_prob=float(payload.get("scheduled_sampling_max_prob", 0.0)),
         high_frequency_loss_weight=float(payload.get("high_frequency_loss_weight", 0.0)),
+        objective_mode=str(payload.get("objective_mode", "state")),
+        state_loss_weight=float(payload.get("state_loss_weight", 1.0)),
+        residual_loss_weight=float(payload.get("residual_loss_weight", 1.0)),
         early_stopping_eval_interval_epochs=int(payload.get("early_stopping_eval_interval_epochs", 0)),
         early_stopping_best_metrics_path=None
         if payload.get("early_stopping_best_metrics_path") is None

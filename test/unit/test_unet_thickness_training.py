@@ -7,7 +7,12 @@ import torch
 
 from src.models.unet_thickness.config import load_unet_thickness_config
 from src.models.unet_thickness.model import UnetThicknessModel
-from src.models.unet_thickness.training import _assemble_model_inputs, build_rollout_curriculum, train_unet_model
+from src.models.unet_thickness.training import (
+    _assemble_model_inputs,
+    _step_objective_loss,
+    build_rollout_curriculum,
+    train_unet_model,
+)
 
 
 def test_build_rollout_curriculum_selects_horizon_by_epoch():
@@ -229,3 +234,42 @@ def test_train_unet_model_records_periodic_eval_results_and_stops_early(tmp_path
     assert train_info["epochs_completed"] == 4
     assert train_info["stopped_early"] is True
     assert isinstance(train_info["should_use_mps"], bool)
+
+
+def test_step_objective_loss_supports_state_residual_and_mixed_modes():
+    loss_fn = torch.nn.MSELoss()
+    current_state = torch.tensor([[[[1.0]]]], dtype=torch.float32)
+    prediction = torch.tensor([[[[4.0]]]], dtype=torch.float32)
+    target = torch.tensor([[[[3.0]]]], dtype=torch.float32)
+
+    state_loss = _step_objective_loss(
+        objective_mode="state",
+        loss_fn=loss_fn,
+        step_prediction=prediction,
+        targets=target,
+        current_state=current_state,
+        state_loss_weight=1.0,
+        residual_loss_weight=1.0,
+    )
+    residual_loss = _step_objective_loss(
+        objective_mode="residual",
+        loss_fn=loss_fn,
+        step_prediction=prediction,
+        targets=target,
+        current_state=current_state,
+        state_loss_weight=1.0,
+        residual_loss_weight=1.0,
+    )
+    mixed_loss = _step_objective_loss(
+        objective_mode="mixed",
+        loss_fn=loss_fn,
+        step_prediction=prediction,
+        targets=target,
+        current_state=current_state,
+        state_loss_weight=1.0,
+        residual_loss_weight=1.0,
+    )
+
+    assert float(state_loss) == 1.0
+    assert float(residual_loss) == 1.0
+    assert float(mixed_loss) == 2.0
