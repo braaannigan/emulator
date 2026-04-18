@@ -1,7 +1,7 @@
 source_data_root: data/raw/double_gyre_shifting_wind_2layer/generator
 source_experiment_id: 20260408T071500-period40d-duration5000d-2layer
 source_output_filename: double_gyre.nc
-hypothesis: "Run the current best incumbent (residual objective + scheduled sampling 0.05) for 100 epochs to test longer-horizon optimization gains."
+hypothesis: "Run the current best incumbent for 100 epochs with no curriculum transition (fixed rollout horizon) to test whether removing schedule shifts improves stability."
 field_name: layer_thickness
 state_fields:
   - layer_thickness
@@ -29,11 +29,9 @@ upsample_mode: bilinear
 residual_connection: true
 residual_step_scale: 0.9
 curriculum_rollout_steps:
-  - 2
   - 4
 curriculum_transition_epochs:
   - 0
-  - 10
 scheduled_sampling_max_prob: 0.05
 high_frequency_loss_weight: 0.0
 objective_mode: residual
