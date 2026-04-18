@@ -91,6 +91,19 @@ Default output roots:
 9. Record the experiment in the matching experiment-specific results file.
 10. Update this file if the methodology itself improves.
 
+### Execution Split For MPS Runs
+
+To ensure training uses Apple Metal (`mps`) instead of sandboxed CPU execution:
+- Codex prepares the batch only: config files, launcher script, and experiment-log entry.
+- The user runs the launcher script locally (outside the Codex sandbox), for example:
+
+```bash
+./scripts/run_<batch_name>.sh <run_prefix>
+```
+
+- After runs complete, Codex evaluates outputs and updates experiment documentation.
+- Do not have Codex start long training batches when the intent is MPS execution.
+
 Example training command:
 
 ```bash

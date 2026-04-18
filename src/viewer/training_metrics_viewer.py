@@ -155,6 +155,7 @@ def training_loss_figure(history: dict[str, object]) -> go.Figure:
         title="Training Loss",
         xaxis_title="epoch",
         yaxis_title="loss",
+        yaxis={"rangemode": "tozero"},
     )
     return figure
 
@@ -210,6 +211,7 @@ def eval_loss_figure(history: dict[str, object]) -> go.Figure:
         title="Eval Loss",
         xaxis_title="epoch",
         yaxis_title="mse",
+        yaxis={"rangemode": "tozero"},
     )
     return figure
 
