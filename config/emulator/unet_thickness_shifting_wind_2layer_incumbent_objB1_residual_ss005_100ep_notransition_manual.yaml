@@ -1,7 +1,7 @@
 source_data_root: data/raw/double_gyre_shifting_wind_2layer/generator
 source_experiment_id: 20260408T071500-period40d-duration5000d-2layer
 source_output_filename: double_gyre.nc
-hypothesis: "Run the current best incumbent for 100 epochs with no curriculum transition (fixed rollout horizon) to test whether removing schedule shifts improves stability."
+hypothesis: "Run the current best incumbent for 100 epochs with fixed rollout horizon 1 to establish a no-curriculum baseline before horizon-schedule experiments."
 field_name: layer_thickness
 state_fields:
   - layer_thickness
@@ -21,7 +21,7 @@ dilation_cycle: 4
 norm_type: groupnorm
 state_history: 2
 state_input_mode: current_plus_residual
-output_steps: 2
+output_steps: 1
 forcing_mode: wind_current
 fusion_mode: input
 skip_fusion_mode: add
@@ -29,7 +29,7 @@ upsample_mode: bilinear
 residual_connection: true
 residual_step_scale: 0.9
 curriculum_rollout_steps:
-  - 4
+  - 1
 curriculum_transition_epochs:
   - 0
 scheduled_sampling_max_prob: 0.05
