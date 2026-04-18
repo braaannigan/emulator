@@ -1,7 +1,7 @@
 source_data_root: data/raw/double_gyre_shifting_wind_2layer/generator
 source_experiment_id: 20260408T071500-period40d-duration5000d-2layer
 source_output_filename: double_gyre.nc
-hypothesis: "Using current state plus state residual (current-previous) with wind forcing will improve autoregressive stability over history-only inputs."
+hypothesis: "Group A objective sweep: mixed objective with lighter state weight (0.5) and residual weight (1.0) will reduce accumulation without over-penalizing state fit."
 field_name: layer_thickness
 state_fields:
   - layer_thickness
@@ -36,8 +36,11 @@ curriculum_transition_epochs:
   - 10
 scheduled_sampling_max_prob: 0.0
 high_frequency_loss_weight: 0.0
+objective_mode: mixed
+state_loss_weight: 0.5
+residual_loss_weight: 1.0
 early_stopping_eval_interval_epochs: 5
-early_stopping_best_metrics_path: data/raw/double_gyre_shifting_wind_2layer/emulator/unet_thickness/20260416T140400-dgsw2l-objB1-residual-ss005/metrics.json
+early_stopping_best_metrics_path: data/raw/double_gyre_shifting_wind_2layer/emulator/unet_thickness/20260416T080000-dgsw2l-input-current-plus-residual/metrics.json
 early_stopping_margin_start: 0.4
 early_stopping_margin_decay: 0.8
 train_start_day: 100
@@ -46,3 +49,4 @@ random_seed: 7
 animation_fps: 0
 raw_output_root: data/raw/double_gyre_shifting_wind_2layer/emulator/unet_thickness
 interim_output_root: data/interim/emulator/unet_thickness
+
