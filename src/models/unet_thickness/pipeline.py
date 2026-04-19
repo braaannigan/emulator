@@ -135,6 +135,36 @@ def _scheduled_early_stopping_margin(config: UnetThicknessConfig, epoch: int) ->
     )
 
 
+def _reference_eval_rolling_mean(
+    reference: dict[str, object],
+    epoch: int,
+    window: int = 3,
+) -> tuple[float, float | None, int | None, list[int]]:
+    epoch_curve = reference.get("epoch_curve", {})
+    if not isinstance(epoch_curve, dict) or len(epoch_curve) == 0:
+        return float(reference["eval_mse_mean"]), reference["eval_mse_last"], None, []
+
+    eligible: list[tuple[int, dict[str, float | None]]] = []
+    for curve_epoch, entry in epoch_curve.items():
+        if not isinstance(curve_epoch, int) or not isinstance(entry, dict):
+            continue
+        eval_mse_mean = entry.get("eval_mse_mean")
+        if eval_mse_mean is None:
+            continue
+        if curve_epoch <= int(epoch):
+            eligible.append((curve_epoch, entry))
+
+    if not eligible:
+        return float(reference["eval_mse_mean"]), reference["eval_mse_last"], None, []
+
+    eligible.sort(key=lambda item: item[0])
+    selected = eligible[-max(int(window), 1) :]
+    selected_epochs = [curve_epoch for curve_epoch, _ in selected]
+    rolling_mean = float(np.mean([float(entry["eval_mse_mean"]) for _, entry in selected]))
+    reference_eval_mse_last = selected[-1][1].get("eval_mse_last")
+    return rolling_mean, None if reference_eval_mse_last is None else float(reference_eval_mse_last), selected_epochs[-1], selected_epochs
+
+
 def _build_periodic_eval_callback(
     config: UnetThicknessConfig,
     model: UnetThicknessModel,
@@ -195,15 +225,9 @@ def _build_periodic_eval_callback(
         if reference is None:
             return result
 
-        epoch_curve = reference.get("epoch_curve", {})
-        benchmark = epoch_curve.get(epoch)
-        reference_eval_mse_mean = float(reference["eval_mse_mean"])
-        reference_eval_mse_last = reference["eval_mse_last"]
-        reference_epoch = None
-        if isinstance(benchmark, dict):
-            reference_eval_mse_mean = float(benchmark["eval_mse_mean"])
-            reference_eval_mse_last = benchmark["eval_mse_last"]
-            reference_epoch = epoch
+        reference_eval_mse_mean, reference_eval_mse_last, reference_epoch, reference_window_epochs = _reference_eval_rolling_mean(
+            reference, epoch, window=3
+        )
         margin_ratio = _scheduled_early_stopping_margin(config, epoch)
         stop_threshold = reference_eval_mse_mean * (1.0 + float(margin_ratio))
         should_stop = eval_mse_mean > stop_threshold
@@ -213,13 +237,15 @@ def _build_periodic_eval_callback(
                 "reference_epoch": reference_epoch,
                 "reference_eval_mse_mean": reference_eval_mse_mean,
                 "reference_eval_mse_last": reference_eval_mse_last,
+                "reference_eval_window_epochs": reference_window_epochs,
+                "reference_eval_window_size": len(reference_window_epochs),
                 "margin_ratio": float(margin_ratio),
                 "stop_threshold": stop_threshold,
                 "stop_training": should_stop,
                 "stop_reason": None
                 if not should_stop
                 else (
-                    "Periodic eval MSE exceeded the early-stopping threshold: "
+                    "Periodic eval MSE exceeded the early-stopping threshold (reference is rolling avg of last 3 checkpoints): "
                     f"{eval_mse_mean:.4f} > {stop_threshold:.4f}."
                 ),
             }
@@ -415,7 +441,7 @@ def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str
         "early_stopping_margin_decay": config.early_stopping_margin_decay,
         "early_stopping_reference_eval_mse_mean": None
         if early_stopping_reference is None
-        else float(early_stopping_reference["eval_mse_mean"]),
+        else _reference_eval_rolling_mean(early_stopping_reference, config.epochs, window=3)[0],
         "eval_window_days": config.eval_window_days,
         "curriculum_rollout_steps": [int(value) for value in config.curriculum_rollout_steps],
         "curriculum_transition_epochs": [int(value) for value in config.curriculum_transition_epochs],

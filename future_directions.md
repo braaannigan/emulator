@@ -1,195 +1,110 @@
-# Future Directions: Model Design
+# Future Directions: Long-Horizon Research Program
 
-This note focuses on model-design directions that can move the emulator beyond incremental hyperparameter tuning.
+This program is based on the broader project trajectory, not only the latest batch.  
+It reflects repeated findings across manual and autonomous runs:
+- best gains came from targeted input/objective changes (for example `current + residual + wind`, residual-focused losses)
+- many promising early checkpoints degraded later in rollout
+- boundary/reflection artifacts remain a first-order failure mode
+- narrow tuning alone has not delivered reliable step-change improvements
 
-Recent experiments suggest the key bottleneck is not only scalar error, but rollout behavior: boundary reflections strengthen over time and propagate inward. The next model iterations should therefore target both forecast skill and structural robustness.
+Below are 10 research areas, intentionally split across lower-risk and higher-risk work.
 
-## Latest Evidence (2026-04-15 Manual Curriculum Batch)
+## 1) Rollout-First Model Selection and Checkpointing (Lower Risk)
 
-Most recent `double_gyre_shifting_wind_2layer` evidence:
+Move from final-epoch selection to rollout-aware checkpoint selection:
+- choose checkpoints by periodic rollout eval (or EMA-smoothed periodic eval), not terminal epoch
+- enforce degradation-aware early-stop rules (`best -> current` drift)
+- standardize reference thresholds (rolling reference windows) across experiments
 
-- best run: `20260415T075100-dgsw2l-bestseed-curriculum-early-30ep` with `eval_mse_mean = 37.8524`
-- second-best: `20260415T074300-dgsw2l-bestseed-curriculum-ss01` with `eval_mse_mean = 45.1809`
-- delayed and three-stage curricula underperformed badly (`eval_mse_mean ~= 89.14` and `109.70`) and repeatedly triggered early-stop thresholds
+Why now: repeated late-epoch regressions show selection policy is a major leverage point.
 
-Implication for next wave:
+## 2) Exposure-to-Generated-States Curriculum (Lower Risk)
 
-- keep the strong `early` curriculum as the default training scaffold
-- explore higher-upside architecture/mechanism changes on top of that scaffold, rather than further narrow optimizer-only tuning
+Systematically optimize exposure bias controls:
+- scheduled sampling schedules emphasizing self-fed training
+- curriculum transition timing and smoothness tuned jointly with exposure settings
+- adaptive progression rules based on stability criteria, not fixed epoch schedules
 
-## Latest Evidence (2026-04-16 Architecture Batch)
+Why now: this has strong theoretical alignment and low implementation risk.
 
-Architecture-focused follow-up on the same `early + 30 epoch` scaffold did not surpass the incumbent:
+## 3) One-Step Recursive Training Line (Medium Risk)
 
-- best architecture challenger (`bottleneck forcing + gated skip + kernel7/dilation2`) reached `eval_mse_mean = 45.5575`, still worse than `37.8524`
-- other architecture variants regressed materially, with two failing at epoch `5` (`eval_mse_mean > 200`)
-- boundary artifacts are still present in rollout inspection, including the incumbent final-step heatmap
+Develop the recursive `output_steps=1` line as a first-class family:
+- strict self-feeding variants (N-BEATS-like recursive forecasting behavior)
+- hybrid recursive + curriculum variants
+- compare against multi-output heads on both final MSE and stability profile
 
-Implication for next wave:
+Why now: directly targets compounding-error mechanics seen in rollout.
 
-- continue architecture exploration, but narrow to one mechanism change at a time around the strongest challenger line (`bottleneck forcing` path)
-- prioritize explicit boundary-aware operators and artifact-focused evaluation signals, not MSE-only selection
+## 4) Residual-Bias and Integral Control (Medium Risk)
 
-## Latest Evidence (2026-04-16 Input-Ablation New Best)
+Add explicit controls for residual drift:
+- zero-mean residual projection
+- global bias-correction head on predicted tendency
+- domain-integral consistency penalties
 
-Input-ablation runs on branch `2026-04-16-dgsw2l-input-ablation` produced a new best:
+Why now: residual diagnostics showed nontrivial bias/integral drift despite decent state-field visuals.
 
-- best run: `20260416T080000-dgsw2l-input-current-plus-residual` with `eval_mse_mean = 28.2273`
-- residual-only and extra-channel variants regressed heavily (`eval_mse_mean = 174` to `315`, early-stopped)
+## 5) Boundary-Aware Loss and Operator Design (Medium Risk)
 
-Residual diagnostics for the new best (final step, truth vs rollout residual maps):
+Treat boundary artifacts as co-equal objective:
+- boundary/interior weighted loss scheduling
+- boundary mask channels and boundary-conditioned skip fusion
+- artifact metrics as gating criteria for model acceptance
 
-- same time window is confirmed for both fields (`t = 4270.0068 -> 4277.0068`, `dt = 7.0 days`)
-- state field agreement is strong (`thickness corr = 0.9865`, normalized RMSE `~0.171`)
-- residual field agreement is much weaker (`residual corr = 0.5666`, normalized RMSE `~0.866`)
-- rollout residual has positive mean bias (`0.1322`) while truth residual is near zero mean
-- domain-integrated residual drift is large in rollout (`sum ~2644.6`) vs near-zero truth (`sum ~0`)
-- rollout residual is spectrally rougher (`high/low spectral energy ratio ~0.0628`) than truth (`~0.0220`)
-- rollout residual gradients are less extreme (`max grad ~4.74`) than truth (`~6.90`), indicating smoother peaks but noisier mid/high-frequency texture
-- residual mismatch is not only a boundary-band issue in this run (boundary/interior absolute error ratio `< 1`), so the artifact is distributed and includes interior phase/amplitude errors
+Why now: boundary reflections remain unresolved and materially affect rollout trust.
 
-Implication for next wave:
+## 6) Multi-Objective Training Beyond MSE (Medium Risk)
 
-- preserve the `current + residual + wind` input recipe as the reference baseline
-- add explicit residual-bias controls (zero-mean or integral-constrained residual heads)
-- target spectral/phase fidelity of residual updates, not only state MSE
-- evaluate residual quality directly in selection rules (bias, correlation, spectral ratio, boundary-vs-interior error)
+Expand objective to include structure-preserving terms:
+- spectral-shape penalties for residual updates
+- gradient/phase-consistency losses
+- controlled trade-off curves between rollout cleanliness and mean MSE
 
-## 1. Boundary-Aware Update Operators
+Why now: some runs are MSE-competitive but structurally flawed in residual/rollout behavior.
 
-The strongest immediate design opportunity is to make boundary handling explicit.
+## 7) Transport-Structured Update Blocks (Higher Risk)
 
-Candidate designs:
+Move beyond pure image-to-image updates:
+- two-stage “advect then correct” modules
+- velocity-conditioned transport branch with correction branch
+- tendency-form heads with explicit update composition
 
-- boundary mask channels injected at each encoder/decoder stage
-- boundary-conditioned skip gating (learned attenuation near edges)
-- masked or boundary-aware convolutions in early and late blocks
+Why now: aligns architecture with governing dynamics; potentially high upside, higher implementation risk.
 
-Why this matters:
+## 8) Multi-Scale Global-Local Coupling (Higher Risk)
 
-- directly targets the dominant observed artifact
-- gives the model an explicit mechanism instead of asking generic convs to infer boundary rules implicitly
+Add mechanisms for basin-scale coherence:
+- global/spectral bottleneck pathway fused with local conv pathway
+- coarse-grid correction branch for long-range coupling
+- anti-ringing constraints in low-frequency channels
 
-## 2. Flux-Form or Tendency-Form Prediction Heads
+Why now: long-horizon artifacts likely involve under-modeled global coupling.
 
-Instead of predicting next state directly, predict structured updates:
+## 9) Structured Cross-Variable Coupling (Higher Risk)
 
-- fluxes with reconstruction of state increments
-- per-variable tendencies added to current state
-- constrained residual heads with stability-aware scaling
-- zero-mean residual projection per step (domain-integral correction)
-- learned global bias-correction head applied to residual tendency
+Explicitly model interactions among `h`, `u`, and `v`:
+- variable-specific encoders + learned coupling modules
+- constrained interaction blocks (thickness-momentum exchange)
+- variable-aware heads with shared physical trunk
 
-Why this matters:
+Why now: current shared-trunk coupling may be too implicit for stable long rollouts.
 
-- improves physical plausibility of updates
-- can reduce long-horizon drift and ringing from unconstrained direct mapping
-- directly addresses the measured residual mean/integral drift in the current best run
+## 10) Temporal Memory Architecture Upgrade (Higher Risk)
 
-## 3. Transport-First Architectures
+Test controlled recurrent memory:
+- ConvGRU/latent recurrence in bottleneck or correction path
+- memory only for residual correction, not full state synthesis
+- norm-constrained recurrent updates for stability
 
-Current U-Net updates are purely image-to-image. A transport-aware structure may better match shallow-water dynamics.
+Why now: repeated “good early, bad late” behavior indicates temporal memory limits.
 
-Candidate designs:
+## Portfolio Guidance
 
-- two-stage block: learned advection/warp then correction
-- latent transport module conditioned on velocity channels
-- split branch for transport and source-term correction
+Use a mixed pipeline rather than single-mode exploration:
+- 60% lower-risk and medium-risk experiments (areas 1–6) for steady progress
+- 40% higher-risk architecture bets (areas 7–10) for breakout gains
 
-Why this matters:
-
-- aligns with dynamics structure ("move then adjust")
-- may improve phase and propagation fidelity
-
-## 4. Multi-Scale Global-Local Coupling
-
-Boundary and basin-scale coherence can be under-modeled by local convolutions alone.
-
-Candidate designs:
-
-- hybrid local conv + spectral block at bottleneck
-- low-frequency global pathway fused with local pathway
-- coarse-grid correction branch for large-scale structure
-
-Why this matters:
-
-- improves long-range coupling
-- can stabilize large-scale modes without over-smoothing local detail
-
-## 5. Structured Cross-Variable Coupling
-
-`h`, `u`, and `v` are currently coupled mostly through a shared trunk. More explicit coupling may improve coherence.
-
-Candidate designs:
-
-- cross-variable interaction blocks (thickness<->momentum exchange layers)
-- separate variable encoders with learned coupling modules
-- variable-specific heads with shared physical interaction trunk
-
-Why this matters:
-
-- encourages physically consistent joint updates
-- may reduce channel-specific artifacts that later amplify in rollout
-
-## 6. Stability-Governed Recurrence
-
-Current state history is short and explicit (`state_history=2`). Recurrence can provide controlled temporal memory.
-
-Candidate designs:
-
-- ConvGRU latent memory inside decoder or bottleneck
-- gated residual recurrence with norm constraints
-- memory branch used only for correction term, not full state synthesis
-
-Why this matters:
-
-- improves temporal consistency
-- can reduce late-rollout degradation after initially good short-horizon behavior
-
-## 7. Curriculum Learning as a Design Lever
-
-Curriculum strategy should be treated as part of model design, not only training configuration.
-
-Candidate curriculum families:
-
-- rollout-horizon curriculum:
-  start with short horizons, increase to longer autoregressive windows
-- scheduled-sampling curriculum:
-  increase model-input replacement probability over training
-- region-aware curriculum:
-  weight boundary bands earlier, then rebalance toward full-domain accuracy
-- error-triggered adaptive curriculum:
-  advance horizon only when intermediate stability/quality criteria are met
-
-Why this matters:
-
-- directly targets the "good early, unstable late" behavior seen in multiple runs
-- can improve robustness without forcing immediate architectural complexity
-- creates a cleaner path to evaluate architecture changes under consistent stability pressure
-
-## Priority Design Roadmap
-
-## Near-Term (highest leverage)
-
-1. Boundary-aware update operators
-2. Flux/tendency-form head
-3. Curriculum-learning variants focused on rollout stability
-4. Transport-first split block
-
-## Mid-Term
-
-1. Structured cross-variable coupling
-2. Multi-scale global-local coupling
-
-## Later
-
-1. Stability-governed recurrence integrated with best prior design
-
-## Evaluation Principle for New Designs
-
-Any design change should be judged on both:
-
-- forecast error (`eval_mse_mean`, horizon profile)
-- rollout quality (boundary reflection growth, interior contamination, visual coherence)
-
-A model design should be considered a forward step if it meaningfully improves rollout behavior while staying competitive on error, even if it is not the absolute lowest MSE candidate.
+Gate progression by two hard criteria:
+- competitive rollout error vs incumbent
+- reduced numerical artifacts (especially boundary reflection growth)
