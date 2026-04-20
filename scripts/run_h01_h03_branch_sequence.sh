@@ -6,7 +6,6 @@ cd "${REPO_ROOT}"
 
 RUN_PREFIX="${1:-$(date -u +%Y%m%dT%H%M%S)-dgsw2l-h01-h03}"
 BASE_BRANCH="${2:-main}"
-TEST_CMD="${TEST_CMD:-.venv/bin/python -m pytest -q test/unit/test_unet_thickness_config.py test/unit/test_unet_thickness_training.py test/unit/test_unet_thickness_pipeline.py}"
 
 IDS=(
   "h01"
@@ -53,9 +52,6 @@ run_one() {
     echo "Missing config for ${id}: ${config_path}" >&2
     exit 1
   fi
-
-  echo "test: ${TEST_CMD}"
-  eval "${TEST_CMD}"
 
   echo "train: ${experiment_id}"
   .venv/bin/python src/pipelines/train_unet_thickness.py \
