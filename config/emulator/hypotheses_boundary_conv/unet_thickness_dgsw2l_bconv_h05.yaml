@@ -6,7 +6,7 @@ field_name: layer_thickness
 state_fields: [layer_thickness, zonal_velocity_centered, meridional_velocity_centered]
 train_fraction: 0.8
 batch_size: 2
-epochs: 40
+epochs: 30
 learning_rate: 3.8e-4
 weight_decay: 1.8e-5
 hidden_channels: 24
