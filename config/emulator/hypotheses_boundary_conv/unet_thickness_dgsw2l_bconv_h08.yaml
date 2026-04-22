@@ -1,0 +1,50 @@
+source_data_root: data/raw/double_gyre_shifting_wind_2layer/generator
+source_experiment_id: 20260408T071500-period40d-duration5000d-2layer
+source_output_filename: double_gyre.nc
+hypothesis: "h08: Disabling dilation cycling dilation_cycle=1 under reflect padding will reduce edge gridding artifacts."
+field_name: layer_thickness
+state_fields: [layer_thickness, zonal_velocity_centered, meridional_velocity_centered]
+train_fraction: 0.8
+batch_size: 2
+epochs: 40
+learning_rate: 3.8e-4
+weight_decay: 1.8e-5
+hidden_channels: 24
+num_levels: 3
+kernel_size: 5
+block_type: convnext
+stage_depth: 2
+dilation_cycle: 1
+norm_type: groupnorm
+boundary_padding_mode: reflect
+state_history: 2
+state_input_mode: current_plus_residual
+output_steps: 1
+forcing_mode: wind_current
+fusion_mode: input
+skip_fusion_mode: add
+upsample_mode: bilinear
+residual_connection: true
+residual_step_scale: 0.9
+curriculum_rollout_steps: [2, 4]
+curriculum_transition_epochs: [0, 10]
+scheduled_sampling_max_prob: 0.05
+high_frequency_loss_weight: 0.0
+objective_mode: residual
+state_loss_weight: 0.0
+residual_loss_weight: 1.0
+early_stopping_eval_interval_epochs: 5
+checkpoint_selection_mode: raw_min
+checkpoint_selection_ema_alpha: 0.5
+checkpoint_selection_last_weight: 0.0
+checkpoint_selection_gate_patience: 1
+early_stopping_degradation_margin: null
+early_stopping_degradation_patience: 1
+early_stopping_degradation_min_evals: 2
+train_start_day: 100
+eval_window_days: 250
+random_seed: 7
+animation_fps: 0
+raw_output_root: data/raw/double_gyre_shifting_wind_2layer/emulator/unet_thickness
+interim_output_root: data/interim/emulator/unet_thickness
+
