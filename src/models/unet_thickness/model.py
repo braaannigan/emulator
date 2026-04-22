@@ -4,6 +4,13 @@ import torch
 import torch.nn as nn
 
 
+def _validate_padding_mode(boundary_padding_mode: str) -> str:
+    allowed = {"zeros", "reflect", "replicate", "circular"}
+    if boundary_padding_mode not in allowed:
+        raise ValueError(f"Unsupported boundary_padding_mode: {boundary_padding_mode}")
+    return boundary_padding_mode
+
+
 def _build_norm(norm_type: str, channels: int) -> nn.Module:
     if norm_type == "none":
         return nn.Identity()
@@ -13,14 +20,36 @@ def _build_norm(norm_type: str, channels: int) -> nn.Module:
 
 
 class ConvBlock(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, norm_type: str, dilation: int):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int,
+        norm_type: str,
+        dilation: int,
+        boundary_padding_mode: str,
+    ):
         super().__init__()
         padding = (kernel_size // 2) * dilation
         self.block = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, dilation=dilation),
+            nn.Conv2d(
+                in_channels,
+                out_channels,
+                kernel_size=kernel_size,
+                padding=padding,
+                dilation=dilation,
+                padding_mode=boundary_padding_mode,
+            ),
             _build_norm(norm_type, out_channels),
             nn.GELU(),
-            nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size, padding=padding, dilation=dilation),
+            nn.Conv2d(
+                out_channels,
+                out_channels,
+                kernel_size=kernel_size,
+                padding=padding,
+                dilation=dilation,
+                padding_mode=boundary_padding_mode,
+            ),
             _build_norm(norm_type, out_channels),
             nn.GELU(),
         )
@@ -30,7 +59,7 @@ class ConvBlock(nn.Module):
 
 
 class ConvNeXtBlock(nn.Module):
-    def __init__(self, channels: int, kernel_size: int, norm_type: str, dilation: int):
+    def __init__(self, channels: int, kernel_size: int, norm_type: str, dilation: int, boundary_padding_mode: str):
         super().__init__()
         padding = (kernel_size // 2) * dilation
         expanded_channels = channels * 4
@@ -41,6 +70,7 @@ class ConvNeXtBlock(nn.Module):
             padding=padding,
             groups=channels,
             dilation=dilation,
+            padding_mode=boundary_padding_mode,
         )
         self.norm = _build_norm(norm_type, channels)
         self.pointwise = nn.Sequential(
@@ -56,6 +86,45 @@ class ConvNeXtBlock(nn.Module):
         return inputs + hidden
 
 
+class DepthwiseSeparableBlock(nn.Module):
+    def __init__(self, channels: int, kernel_size: int, norm_type: str, dilation: int, boundary_padding_mode: str):
+        super().__init__()
+        padding = (kernel_size // 2) * dilation
+        self.block = nn.Sequential(
+            nn.Conv2d(
+                channels,
+                channels,
+                kernel_size=kernel_size,
+                padding=padding,
+                groups=channels,
+                dilation=dilation,
+                padding_mode=boundary_padding_mode,
+            ),
+            _build_norm(norm_type, channels),
+            nn.GELU(),
+            nn.Conv2d(channels, channels, kernel_size=1),
+            _build_norm(norm_type, channels),
+            nn.GELU(),
+            nn.Conv2d(
+                channels,
+                channels,
+                kernel_size=kernel_size,
+                padding=padding,
+                groups=channels,
+                dilation=dilation,
+                padding_mode=boundary_padding_mode,
+            ),
+            _build_norm(norm_type, channels),
+            nn.GELU(),
+            nn.Conv2d(channels, channels, kernel_size=1),
+            _build_norm(norm_type, channels),
+            nn.GELU(),
+        )
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        return inputs + self.block(inputs)
+
+
 class FlexibleBlock(nn.Module):
     def __init__(
         self,
@@ -65,15 +134,24 @@ class FlexibleBlock(nn.Module):
         block_type: str,
         dilations: tuple[int, ...],
         norm_type: str,
+        boundary_padding_mode: str,
     ):
         super().__init__()
         self.projection = nn.Conv2d(in_channels, out_channels, kernel_size=1) if in_channels != out_channels else nn.Identity()
         repeated_blocks: list[nn.Module] = []
         for dilation in dilations:
             if block_type == "standard":
-                repeated_blocks.append(ConvBlock(out_channels, out_channels, kernel_size, norm_type, dilation))
+                repeated_blocks.append(
+                    ConvBlock(out_channels, out_channels, kernel_size, norm_type, dilation, boundary_padding_mode)
+                )
             elif block_type == "convnext":
-                repeated_blocks.append(ConvNeXtBlock(out_channels, kernel_size, norm_type, dilation))
+                repeated_blocks.append(
+                    ConvNeXtBlock(out_channels, kernel_size, norm_type, dilation, boundary_padding_mode)
+                )
+            elif block_type == "depthwise_separable":
+                repeated_blocks.append(
+                    DepthwiseSeparableBlock(out_channels, kernel_size, norm_type, dilation, boundary_padding_mode)
+                )
             else:
                 raise ValueError(f"Unsupported block_type: {block_type}")
         self.block = nn.Sequential(*repeated_blocks)
@@ -119,6 +197,7 @@ class UnetThicknessModel(nn.Module):
         residual_step_scale: float = 1.0,
         block_type: str = "standard",
         prognostic_channels: int = 1,
+        boundary_padding_mode: str = "zeros",
     ):
         super().__init__()
         self.state_channels = state_channels
@@ -129,6 +208,7 @@ class UnetThicknessModel(nn.Module):
         self.skip_fusion_mode = skip_fusion_mode
         self.residual_connection = residual_connection
         self.residual_step_scale = residual_step_scale
+        self.boundary_padding_mode = _validate_padding_mode(boundary_padding_mode)
         levels = max(num_levels, 1)
         dilation_cycle = max(dilation_cycle, 1)
 
@@ -149,13 +229,29 @@ class UnetThicknessModel(nn.Module):
         encoder_input_channels = input_channels if fusion_mode == "input" else state_channels
         in_channels = encoder_input_channels
         for out_channels in encoder_channels:
-            self.encoders.append(FlexibleBlock(in_channels, out_channels, kernel_size, block_type, next_dilations(), norm_type))
+            self.encoders.append(
+                FlexibleBlock(
+                    in_channels,
+                    out_channels,
+                    kernel_size,
+                    block_type,
+                    next_dilations(),
+                    norm_type,
+                    self.boundary_padding_mode,
+                )
+            )
             self.pools.append(nn.MaxPool2d(kernel_size=2, stride=2))
             in_channels = out_channels
 
         bottleneck_channels = encoder_channels[-1] * 2
         self.bottleneck = FlexibleBlock(
-            encoder_channels[-1], bottleneck_channels, kernel_size, block_type, next_dilations(), norm_type
+            encoder_channels[-1],
+            bottleneck_channels,
+            kernel_size,
+            block_type,
+            next_dilations(),
+            norm_type,
+            self.boundary_padding_mode,
         )
         self.forcing_encoder = None
         self.forcing_scale_blocks = None
@@ -167,12 +263,26 @@ class UnetThicknessModel(nn.Module):
             current_channels = forcing_channels
             for out_channels in encoder_channels:
                 self.forcing_scale_blocks.append(
-                    FlexibleBlock(current_channels, out_channels, kernel_size, block_type, next_dilations(), norm_type)
+                    FlexibleBlock(
+                        current_channels,
+                        out_channels,
+                        kernel_size,
+                        block_type,
+                        next_dilations(),
+                        norm_type,
+                        self.boundary_padding_mode,
+                    )
                 )
                 self.forcing_scale_pools.append(nn.AvgPool2d(kernel_size=2, stride=2))
                 current_channels = out_channels
             self.forcing_bottleneck = FlexibleBlock(
-                encoder_channels[-1], bottleneck_channels, kernel_size, block_type, next_dilations(), norm_type
+                encoder_channels[-1],
+                bottleneck_channels,
+                kernel_size,
+                block_type,
+                next_dilations(),
+                norm_type,
+                self.boundary_padding_mode,
             )
 
         self.upconvs = nn.ModuleList()
@@ -197,7 +307,15 @@ class UnetThicknessModel(nn.Module):
             else:
                 raise ValueError(f"Unsupported skip_fusion_mode: {skip_fusion_mode}")
             self.decoders.append(
-                FlexibleBlock(decoder_in_channels, skip_channels, kernel_size, block_type, next_dilations(), norm_type)
+                FlexibleBlock(
+                    decoder_in_channels,
+                    skip_channels,
+                    kernel_size,
+                    block_type,
+                    next_dilations(),
+                    norm_type,
+                    self.boundary_padding_mode,
+                )
             )
             current_channels = skip_channels
 

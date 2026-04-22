@@ -296,6 +296,7 @@ def run_unet_thickness_experiment(config: UnetThicknessConfig | str) -> dict[str
         residual_connection=config.residual_connection,
         residual_step_scale=config.residual_step_scale,
         prognostic_channels=prognostic_channels,
+        boundary_padding_mode=config.boundary_padding_mode,
     )
     train_device = select_device()
     periodic_eval_callback, early_stopping_reference = _build_periodic_eval_callback(

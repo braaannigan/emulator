@@ -13,6 +13,7 @@ def test_load_unet_thickness_config_reads_architecture_fields():
     assert config.stage_depth == 1
     assert config.dilation_cycle == 1
     assert config.norm_type == "groupnorm"
+    assert config.boundary_padding_mode == "zeros"
     assert config.state_history == 1
     assert config.state_input_mode == "history"
     assert config.output_steps == 1

@@ -29,6 +29,7 @@ class UnetThicknessConfig:
     stage_depth: int
     dilation_cycle: int
     norm_type: str
+    boundary_padding_mode: str
     state_history: int
     state_input_mode: str
     output_steps: int
@@ -142,6 +143,7 @@ def load_unet_thickness_config(path: str | Path) -> UnetThicknessConfig:
         stage_depth=int(payload.get("stage_depth", 1)),
         dilation_cycle=int(payload.get("dilation_cycle", 1)),
         norm_type=str(payload.get("norm_type", "groupnorm")),
+        boundary_padding_mode=str(payload.get("boundary_padding_mode", "zeros")),
         state_history=int(payload.get("state_history", 1)),
         state_input_mode=str(payload.get("state_input_mode", "history")),
         output_steps=int(payload.get("output_steps", 1)),
