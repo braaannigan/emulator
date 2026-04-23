@@ -1,0 +1,10 @@
+id,area,branch,config_path,hypothesis
+h01,boundary_info,2026-04-23-dgsw2l-binfo-h01-edge-mask-input,config/emulator/hypotheses_boundary_info/unet_thickness_dgsw2l_binfo_h01.yaml,Add binary edge mask input channel to distinguish truncation from physical structure
+h02,boundary_info,2026-04-23-dgsw2l-binfo-h02-distance-input,config/emulator/hypotheses_boundary_info/unet_thickness_dgsw2l_binfo_h02.yaml,Add single normalized distance to boundary input channel for graded edge treatment
+h03,boundary_info,2026-04-23-dgsw2l-binfo-h03-distance-xy-input,config/emulator/hypotheses_boundary_info/unet_thickness_dgsw2l_binfo_h03.yaml,Add separate x and y distance to boundary input channels for anisotropic edge awareness
+h04,boundary_info,2026-04-23-dgsw2l-binfo-h04-strip-cnn-bottleneck,config/emulator/hypotheses_boundary_info/unet_thickness_dgsw2l_binfo_h04.yaml,Encode boundary strips with shallow CNN and fuse embedding at bottleneck
+h05,boundary_info,2026-04-23-dgsw2l-binfo-h05-per-scale-boundary-fusion,config/emulator/hypotheses_boundary_info/unet_thickness_dgsw2l_binfo_h05.yaml,Fuse boundary features at every encoder scale to keep edge information explicit
+h06,boundary_info,2026-04-23-dgsw2l-binfo-h06-boundary-skip-gating,config/emulator/hypotheses_boundary_info/unet_thickness_dgsw2l_binfo_h06.yaml,Use boundary conditioned skip gating to suppress contaminated edge skips
+h07,boundary_info,2026-04-23-dgsw2l-binfo-h07-boundary-film,config/emulator/hypotheses_boundary_info/unet_thickness_dgsw2l_binfo_h07.yaml,Use FiLM style modulation from boundary embedding during multi scale decoding
+h08,boundary_info,2026-04-23-dgsw2l-binfo-h08-masked-dual-kernels,config/emulator/hypotheses_boundary_info/unet_thickness_dgsw2l_binfo_h08.yaml,Use separate boundary and interior kernels selected by boundary mask
+h09,boundary_info,2026-04-23-dgsw2l-binfo-h09-sponge-loss,config/emulator/hypotheses_boundary_info/unet_thickness_dgsw2l_binfo_h09.yaml,Add thin sponge layer damping loss in boundary band
