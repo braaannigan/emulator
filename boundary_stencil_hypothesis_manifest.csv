@@ -1,0 +1,7 @@
+id,area,branch,config_path,hypothesis
+s01,boundary_stencil,2026-04-23-dgsw2l-bstencil-s01-valid-conv,config/emulator/hypotheses_boundary_stencil/unet_thickness_dgsw2l_bstencil_s01.yaml,Use valid convolutions throughout the U-Net with cropped alignment so no stencil crosses the boundary
+s02,boundary_stencil,2026-04-23-dgsw2l-bstencil-s02-masked-renorm,config/emulator/hypotheses_boundary_stencil/unet_thickness_dgsw2l_bstencil_s02.yaml,Use masked renormalized convolutions everywhere so out of domain stencil taps are ignored and responses are rescaled by valid support
+s03,boundary_stencil,2026-04-23-dgsw2l-bstencil-s03-partial-conv,config/emulator/hypotheses_boundary_stencil/unet_thickness_dgsw2l_bstencil_s03.yaml,Use partial convolutions with propagated support masks throughout the network
+s04,boundary_stencil,2026-04-23-dgsw2l-bstencil-s04-boundary-rule,config/emulator/hypotheses_boundary_stencil/unet_thickness_dgsw2l_bstencil_s04.yaml,Use interior only full stencil convolutions plus a separate learned boundary band update rule
+s05,boundary_stencil,2026-04-23-dgsw2l-bstencil-s05-support-adaptive-kernel,config/emulator/hypotheses_boundary_stencil/unet_thickness_dgsw2l_bstencil_s05.yaml,Use support adaptive kernels that shrink effective stencil width near the boundary
+s06,boundary_stencil,2026-04-23-dgsw2l-bstencil-s06-band-limited-masked-conv,config/emulator/hypotheses_boundary_stencil/unet_thickness_dgsw2l_bstencil_s06.yaml,Apply masked or partial convolution only in the highest resolution boundary sensitive blocks
