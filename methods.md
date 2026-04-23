@@ -1,260 +1,276 @@
-# Methods
+# Methods: Best Incumbent for `double_gyre_shifting_wind_2layer`
 
-## Overview
+## 1. Scope and Incumbent Definition
 
-Our current best emulator is designed to predict the evolution of a forced, single-layer shallow-water system under time-varying wind stress. The model is trained on output from the `double_gyre_shifting_wind` Aronnax generator experiment and is intended to act as a fast surrogate for the numerical model over multi-month to year-scale rollouts.
+This document describes the current **incumbent emulator** for the `double_gyre_shifting_wind_2layer` experiment family, defined in the experiment log as run:
 
-The core idea is simple: instead of solving the shallow-water equations directly at every timestep, we train a neural network to approximate the map from the recent ocean state and current wind forcing to the next few ocean states. The best-performing version of this approach is a residual, multi-step, dilated U-Net with ConvNeXt-style blocks.
+- Emulator run: `20260416T140400-dgsw2l-objB1-residual-ss005`
+- Metrics artifact: [`metrics.json`](/Users/liambrannigan/playModels/emulator/data/raw/double_gyre_shifting_wind_2layer/emulator/unet_thickness/20260416T140400-dgsw2l-objB1-residual-ss005/metrics.json)
+- Config artifact: [`unet_thickness_shifting_wind_2layer_input_current_plus_residual_wind_objB1_residual_ss005_early30_manual.yaml`](/Users/liambrannigan/playModels/emulator/config/emulator/unet_thickness_shifting_wind_2layer_input_current_plus_residual_wind_objB1_residual_ss005_early30_manual.yaml)
+- Source generator run: `20260408T071500-period40d-duration5000d-2layer`
 
-Although this is a machine-learning model, it is not intended as a black-box replacement for all physics. It is a data-driven forecast operator trained to imitate the generator on the specific shallow-water regime represented in the training data.
+Important exclusion: an older run (`20260407T225500-dgsw2l-unet-benchmark-fg`) reported lower MSE but was explicitly invalidated because it used a `400`-day source instead of the intended `5000`-day source.
 
-## Physical Setting
+## 2. Physical Problem and Learning Target
 
-The target system is a one-layer reduced-gravity shallow-water model on a beta plane, forced by wind stress. The prognostic state used by the emulator consists of three gridded fields:
+The emulator approximates the forced two-layer shallow-water evolution operator on a regular horizontal grid.
 
-- layer thickness
-- zonal velocity
-- meridional velocity
+Prognostic variables are predicted jointly:
 
-The forcing supplied to the emulator is the current wind stress field. Because this is a single-layer problem with wind forcing, the model does not attempt to represent vertical structure, thermodynamics, or coupled atmosphere-ocean feedbacks.
+- `layer_thickness` (2 channels, one per layer)
+- `zonal_velocity_centered` (2 channels)
+- `meridional_velocity_centered` (2 channels)
 
-## Learning Problem
+Total prognostic channels: `6`.
 
-At each forecast step, the emulator receives:
+The primary reported skill metric is autoregressive rollout MSE for `layer_thickness` over a 250-day evaluation window (`eval_mse_mean`).
 
-- the current state
-- the immediately preceding state
-- the current wind forcing
+## 3. Data, Temporal Partitioning, and Evaluation Window
 
-and predicts the next two states of the prognostic variables.
+Data source:
 
-In other words, the emulator is not a one-step predictor that only sees a single snapshot. It uses short temporal memory and produces a short forecast segment in one forward pass. This proved important for reducing myopic behavior and improving autoregressive rollout quality.
+- Root: `data/raw/double_gyre_shifting_wind_2layer/generator`
+- Experiment: `20260408T071500-period40d-duration5000d-2layer`
+- File: `double_gyre.nc`
 
-## Data and Training Split
+Grid and cadence observed in rollout artifacts:
 
-The current incumbent is trained on the generator run:
+- Horizontal grid: `200 x 100` (`y x x`)
+- Horizontal coordinates: 10-km spacing (5,000 m to 1,995,000 m in `y`; 5,000 m to 995,000 m in `x`)
+- Saved temporal cadence: 7 days per frame
 
-- source experiment: `20260323T123500-period300d-duration5000d-shift160km`
+Temporal preprocessing and split:
 
-The first `100` days are excluded from training and evaluation. This avoids forcing the model to learn from the early transient adjustment period and instead focuses training on the more settled regime that dominates the long simulation.
+- Initial spin-up discarded: first `100` days (`train_start_day = 100`)
+- Chronological split: `train_fraction = 0.8`
+- Resulting sequence counts in incumbent run:
+- Train timesteps: `560`
+- Eval timesteps: `36`
 
-After this initial trim, the time sequence is split chronologically:
+Evaluation horizon:
 
-- `80%` for training
-- `20%` for evaluation
+- `eval_window_days = 250`
+- Eval timestamps in incumbent metrics span day `4032.0068` to day `4277.0068` (36 points).
 
-This preserves the forecasting structure of the problem. The model is therefore always evaluated on future states that occur after the training segment, rather than on randomly sampled frames.
+## 4. Input-Output Formulation
 
-## Inputs and Outputs
+### 4.1 State Construction
 
-### State Variables
+The model uses `state_history = 2` with `state_input_mode = current_plus_residual`.
 
-The model uses the following state fields:
+For each forecast origin \(t\):
 
-- `layer_thickness`
-- `zonal_velocity_centered`
-- `meridional_velocity_centered`
+- Current state \(x_t\) (6 channels)
+- Previous state \(x_{t-1}\) (6 channels)
+- Residual state \(\Delta x_t = x_t - x_{t-1}\) (6 channels)
 
-Two consecutive states are supplied as input (`state_history = 2`). This gives the network enough information to infer short-term tendencies and propagation, rather than trying to estimate the future from a single instantaneous field.
+State tensor passed to the network:
 
-### Forcing
+\[
+s_t = [x_t, \Delta x_t] \in \mathbb{R}^{12 \times H \times W}.
+\]
 
-The wind enters as an explicit input (`forcing_mode = wind_current`). This is important because the gyre response is driven by external forcing, not only by internal state evolution. The best model injects forcing at the input stage (`fusion_mode = input`), so the network sees the state and forcing together from the first layer onward.
+### 4.2 Forcing Construction
 
-### Predicted Quantities
+Forcing mode is `wind_current`, which contributes one additional channel \(f_t\).
 
-The network predicts the full prognostic state jointly:
+Final network input:
 
-- layer thickness
-- zonal velocity
-- meridional velocity
+\[
+u_t = [s_t, f_t] \in \mathbb{R}^{13 \times H \times W}.
+\]
 
-Joint prediction matters because these fields are dynamically coupled in the shallow-water system. Predicting them together encourages the emulator to learn a coherent update rather than treating thickness alone as the whole problem.
+### 4.3 Multi-Step Output
 
-## Model Architecture
+The network predicts `output_steps = 2` future prognostic states per forward pass:
 
-### Backbone
+\[
+\hat{X}_{t+1:t+2} \in \mathbb{R}^{2 \times 6 \times H \times W}.
+\]
 
-The current incumbent uses a U-Net architecture. U-Nets combine two useful ideas:
+## 5. Network Architecture
 
-- an encoder that compresses the field into progressively coarser spatial representations
-- a decoder that reconstructs a high-resolution output while reusing fine-scale information through skip connections
+Model family: `UnetThicknessModel` (`src/models/unet_thickness/model.py`).
 
-This is a natural fit for shallow-water dynamics because the flow contains both local structure and basin-scale organization. The encoder captures broad spatial context, while the skip connections preserve sharper local detail.
-
-### Specific Architecture Choices
-
-The best model uses:
+Incumbent architecture hyperparameters:
 
 - `hidden_channels = 24`
-- `num_levels = 4`
+- `num_levels = 3`
 - `kernel_size = 5`
 - `block_type = convnext`
 - `stage_depth = 2`
 - `dilation_cycle = 4`
-- `skip_fusion_mode = concat`
-- `upsample_mode = transpose`
+- `norm_type = groupnorm`
+- `fusion_mode = input`
+- `skip_fusion_mode = add`
+- `upsample_mode = bilinear`
+- `residual_connection = true`
+- `residual_step_scale = 0.9`
+- `boundary_padding_mode = zeros` (default)
 
-These choices define a moderately deep and multiscale convolutional network with an enlarged effective receptive field.
+### 5.1 Encoder-Decoder Channel Topology
 
-### ConvNeXt-Style Blocks
+With `num_levels=3`, encoder widths are:
 
-Within each stage, the model uses ConvNeXt-style blocks rather than plain stacked convolutions. Each block applies:
+- Level 1: 24
+- Level 2: 48
+- Level 3: 96
+- Bottleneck: 192
 
-- a depthwise spatial convolution
-- normalization
-- nonlinear activation
-- pointwise channel mixing
-- a residual connection around the block
+Decoder mirrors this with bilinear upsampling + `1x1` projection and additive skip fusion.
 
-This structure improves expressiveness without making the model excessively large. In practice, it was more effective than simpler convolutional blocks in this problem family.
+### 5.2 ConvNeXt-Style Block Used Here
 
-### Enlarged Receptive Field
+Each repeated block is:
 
-The model uses a kernel size of `5` and a dilation cycle of `4`. Dilation means that some convolutions sample points farther apart on the grid, which increases the effective spatial reach of the network without requiring a much larger number of parameters.
+1. Depthwise \(k \times k\) convolution (with dilation \(d\))
+2. GroupNorm(1, C) (channel-wise LayerNorm equivalent)
+3. Pointwise MLP \(C \rightarrow 4C \rightarrow C\) with GELU
+4. Residual addition
 
-For this shallow-water problem, that matters because the wind-driven response is not purely local. Gyre adjustment involves spatially extended structures, and the emulator benefits from being able to sense a broader surrounding region when predicting tendencies.
+Dilation schedule cycles as \(1,2,4,8\) across successive repeated blocks due to `dilation_cycle=4`.
 
-### Skip Connections
+### 5.3 Output Head and Residual Integration
 
-The U-Net decoder uses concatenation-based skip connections. These pass higher-resolution features from the encoder to the decoder so that coarse, large-scale information can be combined with fine, local structure during reconstruction.
+The output head is a `1x1` convolution to \(2 \times 6 = 12\) channels, reshaped to \((\text{steps}=2,\text{channels}=6,H,W)\).
 
-This is especially useful when predicting velocity and thickness fields together, because the emulator must preserve sharp local gradients while still representing basin-scale circulation.
+Residual update rule:
 
-## Residual Formulation
+\[
+\hat{x}_{t+\tau} = x_t + \alpha \, r_{t,\tau}, \quad \alpha=0.9,\ \tau \in \{1,2\},
+\]
 
-One of the most important design choices is that the network predicts state increments rather than absolute states (`residual_connection = true`).
+where \(r_{t,\tau}\) is the raw network output for step \(\tau\).
 
-Operationally, the network computes a correction to the current state, and that correction is added back to the input state to obtain the forecast.
+Model size for this exact configuration: **1,061,268 trainable parameters**.
 
-This is a strong inductive bias for a shallow-water model. Over a single output interval, most of the state usually persists, and the main task is to predict how advection, pressure-gradient effects, drag, and wind forcing change that state. Asking the network to predict the increment is therefore closer to the structure of the numerical problem than asking it to reconstruct the entire next field from scratch.
+## 6. Normalization and Leakage Control
 
-This residual formulation was a major contributor to the current best results.
+State and forcing channels are normalized using statistics fit on the **training split only**.
 
-## Multi-Step Prediction
+- State standardizer: per-channel mean/std from train frames
+- Forcing standardizer: per-channel mean/std from train forcing features
 
-The incumbent predicts two future states in one forward pass (`output_steps = 2`). This turns the model into a short-horizon transition operator rather than a purely one-step regressor.
+No evaluation data are used in normalization fitting.
 
-This matters because the eventual use case is autoregressive rollout. A model that is only trained to make one-step predictions can perform well locally while still drifting badly when iterated. Producing two steps at once encourages the network to learn a slightly broader transition map and reduces short-horizon myopia.
+## 7. Training Objective and Optimization
 
-## Normalization
+### 7.1 Objective
 
-The state channels are standardized using statistics fitted on the training segment only. Wind-forcing channels are standardized separately, again using only the training portion of the data. This prevents evaluation information from leaking into preprocessing and makes the training optimization more stable.
+Incumbent objective mode is `residual`:
 
-Normalization is a numerical convenience rather than a physical statement. After prediction, the outputs are returned to the original physical scale for evaluation.
+- `state_loss_weight = 0.0`
+- `residual_loss_weight = 1.0`
+- Base loss: MSE
 
-## Training Procedure
+For each rollout training step:
 
-### Loss
+\[
+L = \frac{1}{K}\sum_{\tau=1}^{K}
+\left\|\left(\hat{x}_{t+\tau} - x_{t+\tau-1}^{*}\right) -
+\left(x_{t+\tau}^{*} - x_{t+\tau-1}^{*}\right)\right\|_2^2,
+\]
 
-The model is trained with mean squared error between predicted and target fields. The current incumbent does not use extra high-frequency penalties or auxiliary spectral losses.
+with \(K\) the current rollout horizon and \(x^*\) denoting ground truth.
 
-### Optimizer
+No high-frequency penalty is active (`high_frequency_loss_weight = 0.0`).
 
-Training uses Adam with:
+### 7.2 Optimizer and Batching
 
-- learning rate `3.8e-4`
-- weight decay `1.8e-5`
+- Optimizer: Adam
+- Learning rate: `3.8e-4`
+- Weight decay: `1.8e-5`
+- Batch size: `2`
+- Epoch budget: `30`
+- Random seed: `7`
 
-An important result of the recent search process is that the model family itself was already strong, and a large share of the final improvement came from moving to a better optimizer setting inside the same architecture and training regime.
+Incumbent run summary:
 
-### Batch Size and Epochs
+- `optimization_steps = 8350`
+- `train_loss = 0.0026523` at completion
 
-The current incumbent uses:
+## 8. Rollout Curriculum and Scheduled Sampling
 
-- batch size `2`
-- `20` training epochs
+Curriculum is explicit and time-indexed:
 
-Although these are ordinary hyperparameters, they should be viewed as part of the current validated recipe rather than arbitrary defaults.
+- `curriculum_rollout_steps = [2, 4]`
+- `curriculum_transition_epochs = [0, 10]`
 
-## Rollout Curriculum
+Hence:
 
-The model is trained with a rollout curriculum rather than a fixed forecast horizon throughout training.
+- Epochs 1-10 use rollout horizon 2
+- Epochs 11-30 use rollout horizon 4
 
-The training schedule uses:
+Scheduled sampling:
 
-- rollout steps `(2, 4)`
-- transition epochs `(0, 15)`
+- `scheduled_sampling_max_prob = 0.05`
+- Applied with linear ramp over epochs in training code.
 
-This means:
+This setting was the key improvement over the preceding near-best current+residual baseline.
 
-- from the start of training, the model is optimized over short rollouts
-- after epoch `15`, training shifts to a longer effective rollout horizon
+## 9. Early-Stopping Monitor (Active but Non-Triggered)
 
-The purpose is to first learn a stable local transition operator and then gradually require it to remain accurate when iterated further. In this project, this delayed horizon increase was noticeably more effective than forcing the harder rollout regime too early.
+This run used periodic guardrails every 5 epochs:
 
-Scheduled sampling is disabled in the incumbent (`scheduled_sampling_max_prob = 0.0`) because it did not help in the experiments that were tried.
+- `early_stopping_eval_interval_epochs = 5`
+- Reference metrics path:
+  `.../20260416T080000-dgsw2l-input-current-plus-residual/metrics.json`
+- Margin schedule:
+  `early_stopping_margin_start = 0.4`
+  with `early_stopping_margin_decay = 0.8` per periodic check
 
-## Evaluation
+Periodic eval sequence (mean MSE): `125.90 → 79.93 → 53.35 → 48.07 → 29.36 → 25.04`.
 
-The primary evaluation is autoregressive rollout, not one-step prediction. After training, the model is seeded with the initial evaluation state and then rolled forward using its own predictions, together with the prescribed wind forcing.
+No threshold breach occurred; training completed all 30 epochs.
 
-The main reported metric is:
+## 10. Autoregressive Evaluation Protocol
 
-- mean squared error of layer thickness over the evaluation rollout (`eval_mse_mean`)
+Evaluation uses fully autoregressive rollout on the eval split:
 
-Additional diagnostics include:
+1. Seed model with first eval state context.
+2. Advance model recursively using its own predictions.
+3. Inject forcing according to `wind_current` at each step.
+4. Compare predicted and truth fields over the 250-day eval window.
 
-- per-timestep rollout error
-- final-step error
-- qualitative animation of truth versus rollout
+Primary reported metric:
 
-For the current incumbent, the standard evaluation window is `250` days. A separate `500`-day rollout was also examined to assess longer-horizon degradation. That longer test showed that the model remains stable but still accumulates noticeable drift, so long-horizon autoregressive error growth remains the main limitation.
+\[
+\text{eval\_mse\_mean} =
+\frac{1}{T}\sum_{t=1}^{T}\text{MSE}\left(\hat{h}_t,h_t\right),
+\]
 
-## Computational Cost
+where \(h\) denotes two-channel layer thickness.
 
-One motivation for this emulator is speed. We therefore measured the wall-clock cost of advancing the current incumbent and compared it with the Aronnax generator on the same machine.
+Incumbent outcome:
 
-For the current best `double_gyre_shifting_wind` emulator, an autoregressive rollout over `139` evaluation steps took about `1.15 s` on Apple `MPS`, corresponding to about `0.0083 s` per emulator rollout step. In this dataset, one emulator rollout step corresponds to one saved generator interval, that is, `7` simulated days.
+- `eval_mse_mean = 25.0388`
+- `eval_mse_min = 2.3158`
+- `eval_mse_max = 60.5119`
+- Final-step eval MSE: `60.5119`
 
-For the coarse shifting-wind Aronnax generator (`100 x 200` grid, `dt = 600 s`), a short benchmark run required about `10.3 s` to simulate `20` physical days. This corresponds to about `0.516 s` per simulated day, or about `3.61 s` per `7` simulated days.
+The per-timestep curve shows monotonic error growth typical of autoregressive accumulation, but with materially lower level than prior documented incumbents in this experiment family.
 
-Under these conditions, the emulator is approximately `4.3 x 10^2` times faster than the generator for advancing the system by the same amount of simulated physical time.
+## 11. Reproducibility Assets
 
-This estimate should be interpreted carefully. The generator timing is an end-to-end benchmark and therefore includes initialization and output overhead, while the emulator timing is a pure rollout measurement after model loading. The exact speedup will vary by hardware and by how much startup cost is amortized over a long generator integration. Even so, the practical conclusion is robust: the trained emulator advances this shallow-water system on the order of a few hundred times faster than the numerical model on the same machine.
+Configuration and outputs required to reproduce this exact incumbent:
 
-## Current Incumbent Configuration
+- Config:
+  [`unet_thickness_shifting_wind_2layer_input_current_plus_residual_wind_objB1_residual_ss005_early30_manual.yaml`](/Users/liambrannigan/playModels/emulator/config/emulator/unet_thickness_shifting_wind_2layer_input_current_plus_residual_wind_objB1_residual_ss005_early30_manual.yaml)
+- Metrics:
+  [`metrics.json`](/Users/liambrannigan/playModels/emulator/data/raw/double_gyre_shifting_wind_2layer/emulator/unet_thickness/20260416T140400-dgsw2l-objB1-residual-ss005/metrics.json)
+- Rollout fields:
+  [`rollout.nc`](/Users/liambrannigan/playModels/emulator/data/raw/double_gyre_shifting_wind_2layer/emulator/unet_thickness/20260416T140400-dgsw2l-objB1-residual-ss005/rollout.nc)
+- Animation:
+  [`comparison.mp4`](/Users/liambrannigan/playModels/emulator/data/raw/double_gyre_shifting_wind_2layer/emulator/unet_thickness/20260416T140400-dgsw2l-objB1-residual-ss005/comparison.mp4)
 
-The best documented shifting-wind emulator at present uses:
+Training entrypoint:
 
-- U-Net with ConvNeXt-style blocks
-- `4` spatial levels
-- `24` base channels
-- kernel size `5`
-- dilation cycle `4`
-- joint prediction of thickness, zonal velocity, and meridional velocity
-- two-frame state history
-- two-step output operator
-- explicit current wind forcing
-- residual prediction
-- delayed `2 -> 4` rollout curriculum
-- Adam optimizer with learning rate `3.8e-4`
-- weight decay `1.8e-5`
+```bash
+.venv/bin/python src/pipelines/train_unet_thickness.py \
+  --config config/emulator/unet_thickness_shifting_wind_2layer_input_current_plus_residual_wind_objB1_residual_ss005_early30_manual.yaml \
+  --experiment-id <new_run_id>
+```
 
-This model achieved the best documented result on the active `double_gyre_shifting_wind` benchmark, with strong improvement over earlier one-step and non-residual variants.
+## 12. Methodological Limits of the Incumbent
 
-## Interpretation
-
-The present model encodes several assumptions about the shallow-water forecasting problem:
-
-- the next state is mostly a correction to the current state, not a complete replacement
-- recent state history contains useful dynamical information
-- wind forcing should be supplied explicitly as a causal driver
-- thickness and velocity should be forecast together
-- useful forecast skill depends on both local structure and larger-scale spatial context
-- training should emphasize autoregressive behavior, not just local one-step fit
-
-These assumptions are consistent with the structure of the underlying shallow-water system and help explain why this model outperformed simpler CNNs, plain U-Nets, and less structured training setups.
-
-## Limitations
-
-This emulator should still be understood as a learned surrogate for a specific numerical experiment family, not as a universal shallow-water solver.
-
-Its main limitations are:
-
-- it is trained on a single-layer system
-- it only handles the forcing regime represented in the training data
-- it is optimized primarily for a `250`-day evaluation window
-- rollout error still grows substantially on longer `500`-day tests
-
-The model is therefore best viewed as a strong experiment-specific emulator with physically informed inductive biases, rather than as a general replacement for the governing equations.
+The incumbent remains experiment-specific and does not yet eliminate long-rollout boundary artifact growth. It is a strong autoregressive surrogate for the current 2-layer forcing regime, but not a general-purpose ocean emulator outside this training distribution.
