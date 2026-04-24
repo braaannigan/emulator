@@ -1,0 +1,6 @@
+id,area,branch,config_path,hypothesis
+g01,graph_mesh,2026-04-24-dgsw2l-graph-g01-cross,config/emulator/hypotheses_graph/unet_thickness_dgsw2l_graph_g01.yaml,Use a 4-neighbor grid-graph message-passing operator instead of convolutions.
+g02,graph_mesh,2026-04-24-dgsw2l-graph-g02-full,config/emulator/hypotheses_graph/unet_thickness_dgsw2l_graph_g02.yaml,Use an 8-neighbor grid-graph message-passing operator instead of convolutions.
+g03,graph_mesh,2026-04-24-dgsw2l-graph-g03-cross-boundary,config/emulator/hypotheses_graph/unet_thickness_dgsw2l_graph_g03.yaml,Use a 4-neighbor graph operator with explicit boundary features at each node.
+g04,graph_mesh,2026-04-24-dgsw2l-graph-g04-cross-global,config/emulator/hypotheses_graph/unet_thickness_dgsw2l_graph_g04.yaml,Use a 4-neighbor graph operator with broadcast global context in each update.
+g05,graph_mesh,2026-04-24-dgsw2l-graph-g05-full-boundary-global,config/emulator/hypotheses_graph/unet_thickness_dgsw2l_graph_g05.yaml,Use an 8-neighbor graph operator with both boundary features and global context.
