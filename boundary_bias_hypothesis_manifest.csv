@@ -1,0 +1,6 @@
+id,area,branch,config_path,hypothesis
+b01,boundary_bias,2026-04-24-dgsw2l-bbias-b01-mean-center,config/emulator/hypotheses_boundary_bias/unet_thickness_dgsw2l_bbias_b01.yaml,Subtract the per-step boundary-band mean residual so the edge band cannot accumulate a simple additive drift.
+b02,boundary_bias,2026-04-24-dgsw2l-bbias-b02-learned-static,config/emulator/hypotheses_boundary_bias/unet_thickness_dgsw2l_bbias_b02.yaml,Learn a static boundary-band correction map and subtract it at every autoregressive step.
+b03,boundary_bias,2026-04-24-dgsw2l-bbias-b03-scaled-static,config/emulator/hypotheses_boundary_bias/unet_thickness_dgsw2l_bbias_b03.yaml,Learn a static correction pattern whose amplitude is conditioned on the decoded state.
+b04,boundary_bias,2026-04-24-dgsw2l-bbias-b04-dynamic-head,config/emulator/hypotheses_boundary_bias/unet_thickness_dgsw2l_bbias_b04.yaml,Use a lightweight decoder correction head to subtract a dynamic boundary artifact estimate before each step is applied.
+b05,boundary_bias,2026-04-24-dgsw2l-bbias-b05-edge-state-head,config/emulator/hypotheses_boundary_bias/unet_thickness_dgsw2l_bbias_b05.yaml,Use the current prognostic state plus boundary feature maps to predict and subtract a boundary-local artifact component.
