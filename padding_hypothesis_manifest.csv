@@ -1,0 +1,4 @@
+id,area,branch,config_path,hypothesis
+p01,boundary_padding,2026-04-24-dgsw2l-pad-p01-replicate,config/emulator/hypotheses_padding/unet_thickness_dgsw2l_pad_p01.yaml,Use replicate padding in the U-Net convolutions.
+p02,boundary_padding,2026-04-24-dgsw2l-pad-p02-replicate-decay3,config/emulator/hypotheses_padding/unet_thickness_dgsw2l_pad_p02.yaml,Use replicate padding that decays linearly to zero over three outside-domain grid cells.
+p03,boundary_padding,2026-04-24-dgsw2l-pad-p03-random-inland,config/emulator/hypotheses_padding/unet_thickness_dgsw2l_pad_p03.yaml,Fill outside-domain padding cells with random channel-scaled values on each forward pass.
