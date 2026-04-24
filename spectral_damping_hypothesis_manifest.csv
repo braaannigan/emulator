@@ -1,0 +1,6 @@
+id,area,branch,config_path,hypothesis
+d01,spectral_damping,2026-04-24-dgsw2l-specdamp-d01-hard-mild,config/emulator/hypotheses_spectral_damping/unet_thickness_dgsw2l_specdamp_d01.yaml,Apply a mild global hard low-pass filter after each predicted step.
+d02,spectral_damping,2026-04-24-dgsw2l-specdamp-d02-hard-strong,config/emulator/hypotheses_spectral_damping/unet_thickness_dgsw2l_specdamp_d02.yaml,Apply a stronger global hard low-pass filter after each predicted step.
+d03,spectral_damping,2026-04-24-dgsw2l-specdamp-d03-exp-mild,config/emulator/hypotheses_spectral_damping/unet_thickness_dgsw2l_specdamp_d03.yaml,Apply mild exponential global spectral damping after each predicted step.
+d04,spectral_damping,2026-04-24-dgsw2l-specdamp-d04-exp-moderate,config/emulator/hypotheses_spectral_damping/unet_thickness_dgsw2l_specdamp_d04.yaml,Apply moderate exponential global spectral damping after each predicted step.
+d05,spectral_damping,2026-04-24-dgsw2l-specdamp-d05-exp-aggressive,config/emulator/hypotheses_spectral_damping/unet_thickness_dgsw2l_specdamp_d05.yaml,Apply aggressive high-order exponential global spectral damping after each predicted step.
