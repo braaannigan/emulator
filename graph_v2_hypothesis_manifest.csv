@@ -1,0 +1,6 @@
+id,area,branch,config_path,hypothesis
+v01,graph_mesh_v2,2026-04-26-dgsw2l-graphv2-v01-rich-features,config/emulator/hypotheses_graph_v2/unet_thickness_dgsw2l_graph_v2_v01.yaml,Use rich spatial node features in the cross-stencil grid graph.
+v02,graph_mesh_v2,2026-04-26-dgsw2l-graphv2-v02-rich-deeper,config/emulator/hypotheses_graph_v2/unet_thickness_dgsw2l_graph_v2_v02.yaml,Use rich spatial node features with deeper graph propagation.
+v03,graph_mesh_v2,2026-04-26-dgsw2l-graphv2-v03-gated-edge-embeddings,config/emulator/hypotheses_graph_v2/unet_thickness_dgsw2l_graph_v2_v03.yaml,Use gated graph messages with explicit edge-type embeddings.
+v04,graph_mesh_v2,2026-04-26-dgsw2l-graphv2-v04-boundary-gated,config/emulator/hypotheses_graph_v2/unet_thickness_dgsw2l_graph_v2_v04.yaml,Use rich node features plus a boundary-conditioned graph gate.
+v05,graph_mesh_v2,2026-04-26-dgsw2l-graphv2-v05-deeper-global,config/emulator/hypotheses_graph_v2/unet_thickness_dgsw2l_graph_v2_v05.yaml,Use the strongest graph-v2 variant with deeper propagation and global context.
